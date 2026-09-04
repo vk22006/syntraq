@@ -1,0 +1,43 @@
+# CMake build artifacts
+build/
+build-rel/
+build-*/
+out/
+.cache/
+
+# Runtime output (generated metrics, logs)
+data/
+*.csv
+*.log
+
+# IDE / Editor
+.vs/
+.vscode/
+*.user
+*.suo
+*.sdf
+*.opendb
+*.db
+.idea/
+*.code-workspace
+CMakeSettings.json
+
+# Compiled binaries
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.exp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,17 @@
+# Git line ending normalization
+* text=auto
+
+# Force LF for Unix-compatible files  
+*.sh text eol=lf
+*.yml text eol=lf
+
+# Force CRLF for Windows-specific files (none yet)
+# *.bat text eol=crlf
+
+# Treat binary files as binary (no line ending conversion)
+*.lib binary
+*.dll binary
+*.pdb binary
+*.png binary
+*.jpg binary
+*.ttf binary
