@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  BUILD_TYPE: Debug
+  # Override the local Raylib SDK path for CI — Raylib is fetched from source
+  RAYLIB_VERSION: "6.0"
+
+jobs:
+  # ── Build + Test (Windows x64 MSVC) ──────────────────────────────────────
+  build-windows:
+    name: Windows x64 (MSVC)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Fetch Raylib release (x64 Windows MSVC)
+        shell: pwsh
+        run: |
+          $ver = "${{ env.RAYLIB_VERSION }}"
+          $url = "https://github.com/raysan5/raylib/releases/download/$ver/raylib-${ver}_win64_msvc16.zip"
+          Invoke-WebRequest -Uri $url -OutFile raylib.zip
+          Expand-Archive raylib.zip -DestinationPath raylib_sdk
+          # Expose path for CMake
+          $sdkPath = (Get-ChildItem raylib_sdk -Directory | Select-Object -First 1).FullName
+          echo "RAYLIB_SDK_DIR=$sdkPath" >> $env:GITHUB_ENV
+
+      - name: Configure (MSVC, x64)
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cmake -B build ^
+                -G Ninja ^
+                -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} ^
+                -DRAYLIB_SDK_DIR="%RAYLIB_SDK_DIR%" ^
+                -DCMAKE_C_COMPILER=cl ^
+                -DCMAKE_CXX_COMPILER=cl
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cmake --build build --parallel
+
+      - name: Test
+        shell: cmd
+        working-directory: build
+        run: ctest --output-on-failure --timeout 60
+
+  # ── Build + Test (Ubuntu, GCC) ────────────────────────────────────────────
+  build-linux:
+    name: Ubuntu (GCC-14)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build \
+            gcc-14 g++-14 \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxi-dev libxext-dev \
+            libasound2-dev
+
+      - name: Fetch Raylib release (Linux x64)
+        run: |
+          VER="${{ env.RAYLIB_VERSION }}"
+          URL="https://github.com/raysan5/raylib/releases/download/$VER/raylib-${VER}_linux_amd64.tar.gz"
+          curl -L "$URL" -o raylib.tar.gz
+          mkdir raylib_sdk
+          tar -xzf raylib.tar.gz -C raylib_sdk
+          SDK_PATH=$(ls -d raylib_sdk/*/  | head -1)
+          echo "RAYLIB_SDK_DIR=${SDK_PATH%/}" >> $GITHUB_ENV
+
+      - name: Configure
+        run: |
+          cmake -B build \
+                -G Ninja \
+                -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+                -DRAYLIB_SDK_DIR="${RAYLIB_SDK_DIR}" \
+                -DCMAKE_C_COMPILER=gcc-14 \
+                -DCMAKE_CXX_COMPILER=g++-14
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure --timeout 60
