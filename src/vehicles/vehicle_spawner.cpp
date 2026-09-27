@@ -5,16 +5,17 @@
 #include "syntraq/vehicles/vehicle_spawner.h"
 
 #include <algorithm>
-#include <unordered_set>
 
 namespace syntraq {
 
-VehicleSpawner::VehicleSpawner(uint32_t rng_seed,
-                               float    spawn_interval_s_,
-                               uint32_t max_vehicles_)
+VehicleSpawner::VehicleSpawner(uint32_t                              rng_seed,
+                               float                                 spawn_interval_s_,
+                               uint32_t                              max_vehicles_,
+                               std::shared_ptr<const IRouteProvider> route_provider)
     : spawn_interval_s(spawn_interval_s_)
     , max_vehicles    (max_vehicles_)
     , rng_            (rng_seed)
+    , route_provider_ (route_provider ? std::move(route_provider) : std::make_shared<GreedyRouteProvider>())
 {
 }
 
@@ -72,58 +73,11 @@ std::optional<Vehicle> VehicleSpawner::try_spawn(const RoadNetwork& network,
 }
 
 // ── build_route ───────────────────────────────────────────────────────────────
-// Greedy BFS-like walk: from source, always prefer the outgoing road that
-// leads *directly* to destination; otherwise pick an unvisited neighbour.
-// This is intentionally simple — proper Dijkstra in Milestone 4.
 
 std::vector<RoadId> VehicleSpawner::build_route(const RoadNetwork& network,
-                                                 IntersectionId     source,
-                                                 IntersectionId     destination) const {
-    std::vector<RoadId>                route;
-    std::unordered_set<IntersectionId> visited;
-
-    IntersectionId current = source;
-    visited.insert(current);
-
-    // Limit walk to intersection_count steps to avoid infinite loops
-    const uint32_t max_steps = network.intersection_count();
-
-    for (uint32_t step = 0; step < max_steps; ++step) {
-        if (current == destination) break;
-
-        const Intersection* node = network.intersection(current);
-        if (!node || node->outgoing_roads.empty()) break;
-
-        // Prefer a road that leads directly to destination
-        RoadId   best_road  = kInvalidRoadId;
-        IntersectionId next = kInvalidIntersectionId;
-        bool     found_dest = false;
-
-        for (RoadId rid : node->outgoing_roads) {
-            const Road* r = network.road(rid);
-            if (!r) continue;
-            if (r->to == destination) {
-                best_road  = rid;
-                next       = destination;
-                found_dest = true;
-                break;
-            }
-            if (!found_dest && visited.find(r->to) == visited.end()) {
-                best_road = rid;
-                next      = r->to;
-            }
-        }
-
-        if (best_road == kInvalidRoadId) break; // Stuck
-
-        route.push_back(best_road);
-        visited.insert(next);
-        current = next;
-    }
-
-    // Route is valid only if it ends at the destination
-    if (current != destination) return {};
-    return route;
+                                                IntersectionId     source,
+                                                IntersectionId     destination) const {
+    return route_provider_->find_route(network, source, destination);
 }
 
 // ── private helpers ───────────────────────────────────────────────────────────

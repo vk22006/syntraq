@@ -37,11 +37,21 @@ public:
     /// Advance the simulation by one fixed timestep (cfg_.dt_seconds).
     void tick();
 
+    /// Advance simulation using real elapsed time with a fixed-timestep accumulator.
+    void update(float dt_real);
+
     /// Convenience: run until elapsed_s >= duration_s (headless / tests).
     void run_for(float duration_s);
 
     /// Reset to t=0 with the same config.
     void reset();
+
+    // ── Simulation controls ───────────────────────────────────────────────
+    void set_paused(bool paused) noexcept;
+    [[nodiscard]] bool is_paused() const noexcept;
+
+    void set_time_scale(float scale) noexcept;
+    [[nodiscard]] float time_scale() const noexcept;
 
     // ── Read-only accessors ───────────────────────────────────────────────
     [[nodiscard]] const SimState&     state()    const noexcept { return state_; }
@@ -59,6 +69,8 @@ private:
     std::vector<Vehicle>  vehicles_;
     VehicleMovementSystem movement_system_;
     VehicleSpawner        spawner_;
+    float                 accumulator_{ 0.0f };
+    float                 time_scale_ { 1.0f };
 };
 
 } // namespace syntraq

@@ -1,8 +1,8 @@
-# SyntraQ
-
-**Real-time AI-driven Urban Traffic Simulation & Optimization**
+# SyntraQ: Real-time AI-driven Urban Traffic Simulation & Optimization
 
 A research-oriented C++20 simulation platform that models urban traffic and evaluates AI-based traffic management strategies.
+
+![screenshot](docs/simulation_traffic.png)
 
 ---
 
@@ -10,11 +10,12 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 
 | Milestone | Description                              | Status      |
 |-----------|------------------------------------------|-------------|
-| M1        | Project foundation & simulation loop    | ✅ Complete |
-| M2        | Road network, vehicles, fixed-time signals | Planned   |
-| M3        | Routing, metrics, CSV export             | Planned     |
-| M4        | Adaptive signal controller               | Planned     |
-| M5        | ONNX AI integration                      | Planned     |
+| M1        | Project foundation & simulation loop     | ✅ Complete |
+| M2        | Road network & directed graph model      | ✅ Complete |
+| M3        | Autonomous vehicle simulation            | ✅ Complete |
+| M3.5      | UI & visual polish, camera, timing architecture | ✅ Complete |
+| M4        | Traffic signals & shortest-path routing  | Planned     |
+| M5        | Adaptive & AI signal optimization        | Planned     |
 
 ---
 
@@ -121,6 +122,35 @@ SyntraQ/
 3. `syntraq` — thin entry point only
 4. Simulation reads Config once at startup; no global state
 5. Renderer reads `SimState`; never writes to Simulation
+6. Route generation isolated behind `IRouteProvider` interface (`GreedyRouteProvider`)
+
+---
+
+## Simulation Controls & Timing
+
+### Camera Controls
+- **Mouse Wheel**: Smooth zoom towards cursor position (0.25× – 4.0×).
+- **Middle Mouse Drag** or **Right Mouse Drag**: Pan the viewport.
+- **R Key** or **Reset View Button**: Frame and center the road network within the active viewport.
+- Window resizing dynamically adapts the viewport and preserves network centering.
+
+### Simulation Controls (UI & Keyboard)
+- **Space** or **Pause / Resume Button**: Toggle simulation execution.
+- **Reset Sim Button**: Resets simulation clock, vehicles, and network to $t=0$.
+- **Speed Multipliers**: `0.25×`, `0.5×`, `1×`, `2×`, `5×` presets.
+
+### Debug Visualizations (Disabled by default)
+- **Intersection IDs**: Technical ID badges on junction nodes.
+- **Road IDs**: Segment ID labels centered along road links.
+- **Lane Boundaries**: Visible lane boundary guidelines.
+- **Vehicle Direction Vectors**: Forward heading vectors and tips from vehicles.
+- **Debug Statistics**: Simulation metrics (Tick, Sim Time, Render FPS), world topology, and vehicle counts.
+
+### Fixed-Timestep Architecture
+Simulation advancement is decoupled from rendering frame rate:
+$$\text{Real elapsed time} \xrightarrow{} \text{Accumulator} \xrightarrow{} \text{Fixed timestep } (\Delta t = 0.10\,\text{s}) \xrightarrow{} \text{Simulation updates} \xrightarrow{} \text{Rendering}$$
+
+Guarantees identical, deterministic simulation progression regardless of rendering display refresh rate (60 Hz, 144 Hz, vsync off, or headless).
 
 ---
 

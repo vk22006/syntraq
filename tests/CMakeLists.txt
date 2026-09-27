@@ -15,23 +15,24 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+include(GoogleTest)
+
 # ---------------------------------------------------------------------------
 # Helper macro to register a test executable with CTest
 # ---------------------------------------------------------------------------
-macro(syntraq_add_test TEST_NAME SOURCE_FILE)
+function(syntraq_add_test TEST_NAME SOURCE_FILE)
     add_executable(${TEST_NAME} ${SOURCE_FILE})
     target_link_libraries(${TEST_NAME}
         PRIVATE syntraq_core GTest::gtest_main
     )
     target_compile_options(${TEST_NAME} PRIVATE
-        $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive->
+        $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
     )
-    include(GoogleTest)
     gtest_discover_tests(${TEST_NAME}
         DISCOVERY_TIMEOUT 30
     )
-endmacro()
+endfunction()
 
 # ---------------------------------------------------------------------------
 # Test targets
