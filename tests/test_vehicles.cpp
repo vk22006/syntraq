@@ -472,4 +472,34 @@ TEST(MovementSystemTest, StoppedVehicleDoesNotMove) {
     EXPECT_EQ(vehicles[0].state, VehicleState::Stopped);
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// Route Provider abstraction tests
+// ═══════════════════════════════════════════════════════════════════
+
+TEST(RouteProviderTest, GreedyRouteProviderDirect) {
+    RoadNetwork net;
+    auto a = net.add_intersection({ 0,   0 });
+    auto b = net.add_intersection({ 100, 0 });
+    auto c = net.add_intersection({ 200, 0 });
+    auto rab = net.add_road(a, b, 100.f);
+    auto rbc = net.add_road(b, c, 100.f);
+
+    GreedyRouteProvider provider;
+    auto route = provider.find_route(net, a, c);
+    ASSERT_EQ(route.size(), 2u);
+    EXPECT_EQ(route[0], rab);
+    EXPECT_EQ(route[1], rbc);
+}
+
+TEST(RouteProviderTest, GreedyRouteProviderUnreachableReturnsEmpty) {
+    RoadNetwork net;
+    auto a = net.add_intersection({ 0,   0 });
+    auto b = net.add_intersection({ 100, 0 });
+    // No road between a and b
+    GreedyRouteProvider provider;
+    auto route = provider.find_route(net, a, b);
+    EXPECT_TRUE(route.empty());
+}
+
 } // namespace syntraq
+
