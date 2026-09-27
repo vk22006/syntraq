@@ -93,13 +93,14 @@ add_library(syntraq_core STATIC
     src/world/road_network.cpp
     src/vehicles/vehicle_movement_system.cpp
     src/vehicles/vehicle_spawner.cpp
+    src/vehicles/route_provider.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
 )
 # Warning flags for our own code
 target_compile_options(syntraq_core PRIVATE
-    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive->
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
 
@@ -114,7 +115,7 @@ target_include_directories(syntraq_renderer PUBLIC
 )
 target_link_libraries(syntraq_renderer PUBLIC syntraq_core raylib rlimgui imgui)
 target_compile_options(syntraq_renderer PRIVATE
-    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive->
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
 
@@ -124,7 +125,7 @@ target_compile_options(syntraq_renderer PRIVATE
 add_executable(syntraq src/main.cpp)
 target_link_libraries(syntraq PRIVATE syntraq_core syntraq_renderer)
 target_compile_options(syntraq PRIVATE
-    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive->
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
 
