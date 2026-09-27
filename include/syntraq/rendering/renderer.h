@@ -4,9 +4,8 @@
 // syntraq/rendering/renderer.h
 //
 // Renderer abstraction — wraps Raylib window lifecycle and drawing.
-// The Renderer reads SimState and RoadNetwork; it never modifies them.
-// Dear ImGui is set up here via rlImGui so debug overlays can be added
-// incrementally in future milestones.
+// The Renderer reads SimState, RoadNetwork, and Vehicles; it never writes.
+// Dear ImGui is set up via rlImGui for debug overlays.
 //
 // NOTE: This header deliberately does NOT include raylib.h or imgui.h so
 // that other modules (Simulation, tests) don't pull in those heavy headers
@@ -16,6 +15,9 @@
 #include "syntraq/core/config.h"
 #include "syntraq/simulation/simulation.h"
 #include "syntraq/world/road_network.h"
+#include "syntraq/vehicles/vehicle.h"
+
+#include <vector>
 
 namespace syntraq {
 
@@ -35,12 +37,16 @@ public:
     /// Returns true when the user closes the window.
     [[nodiscard]] bool should_close() const;
 
-    /// One frame: begin-frame → draw network → draw ImGui overlay → end-frame.
-    void render_frame(const SimState& state, const RoadNetwork& network);
+    /// One frame: begin → draw network → draw vehicles → ImGui → end.
+    void render_frame(const SimState&           state,
+                      const RoadNetwork&         network,
+                      const std::vector<Vehicle>& vehicles);
 
 private:
     void begin_frame();
     void draw_network(const RoadNetwork& network);
+    void draw_vehicles(const RoadNetwork& network,
+                       const std::vector<Vehicle>& vehicles);
     void draw_imgui(const SimState& state, const RoadNetwork& network);
     void end_frame();
 
