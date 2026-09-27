@@ -91,6 +91,8 @@ add_library(syntraq_core STATIC
     src/core/config.cpp
     src/simulation/simulation.cpp
     src/world/road_network.cpp
+    src/vehicles/vehicle_movement_system.cpp
+    src/vehicles/vehicle_spawner.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
