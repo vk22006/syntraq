@@ -26,11 +26,12 @@ int main(int argc, char* argv[]) {
     if (cfg.headless) {
         syntraq::Simulation sim{ cfg };
         sim.run_for(cfg.sim_duration_s);
-        std::cout << "[SyntraQ] Headless run complete. "
-                  << "Ticks: "   << sim.state().tick
-                  << "  Time: "  << sim.state().elapsed_s << "s\n"
-                  << "  Intersections: " << sim.network().intersection_count()
-                  << "  Roads: "         << sim.network().road_count() << "\n";
+        const auto& s = sim.state();
+        std::cout << "[SyntraQ] Headless run complete.\n"
+                  << "  Ticks  : " << s.tick       << "\n"
+                  << "  Time   : " << s.elapsed_s  << " s\n"
+                  << "  Spawned: " << s.total_spawned << "\n"
+                  << "  Arrived: " << s.total_arrived << "\n";
         return 0;
     }
 
@@ -40,7 +41,7 @@ int main(int argc, char* argv[]) {
 
     while (!renderer.should_close()) {
         sim.tick();
-        renderer.render_frame(sim.state(), sim.network());
+        renderer.render_frame(sim.state(), sim.network(), sim.vehicles());
     }
 
     return 0;
