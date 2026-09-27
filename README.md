@@ -149,6 +149,7 @@ SyntraQ/
 ### Fixed-Timestep Architecture
 Simulation advancement is decoupled from rendering frame rate:
 $$\text{Real elapsed time} \xrightarrow{} \text{Accumulator} \xrightarrow{} \text{Fixed timestep } (\Delta t = 0.10\,\text{s}) \xrightarrow{} \text{Simulation updates} \xrightarrow{} \text{Rendering}$$
+
 Guarantees identical, deterministic simulation progression regardless of rendering display refresh rate (60 Hz, 144 Hz, vsync off, or headless).
 
 ---
