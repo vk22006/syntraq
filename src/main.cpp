@@ -2,7 +2,7 @@
 // src/main.cpp
 //
 // Application entry point.
-// Responsibilities here: parse argv, build Config, wire Simulation + Renderer,
+// Responsibilities: parse argv, build Config, wire Simulation + Renderer,
 // run the main loop, and clean up. Nothing else.
 //
 
@@ -28,7 +28,9 @@ int main(int argc, char* argv[]) {
         sim.run_for(cfg.sim_duration_s);
         std::cout << "[SyntraQ] Headless run complete. "
                   << "Ticks: "   << sim.state().tick
-                  << "  Time: "  << sim.state().elapsed_s << "s\n";
+                  << "  Time: "  << sim.state().elapsed_s << "s\n"
+                  << "  Intersections: " << sim.network().intersection_count()
+                  << "  Roads: "         << sim.network().road_count() << "\n";
         return 0;
     }
 
@@ -38,7 +40,7 @@ int main(int argc, char* argv[]) {
 
     while (!renderer.should_close()) {
         sim.tick();
-        renderer.render_frame(sim.state());
+        renderer.render_frame(sim.state(), sim.network());
     }
 
     return 0;

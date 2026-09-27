@@ -12,11 +12,33 @@
 #include "rlImGui.h"
 #include "imgui.h"
 
+#include <cmath>
 #include <string>
 
 namespace syntraq {
 
-// ── Construction / destruction ──────────────────────────────────────────────
+// ── Palette ───────────────────────────────────────────────────────────────────
+
+namespace pal {
+    // Background
+    constexpr Color bg           = {  12,  14,  20, 255 };
+    // Road surface
+    constexpr Color road_fill    = {  40,  44,  58, 255 };
+    // Lane divider (dashed centre line)
+    constexpr Color lane_divider = {  90, 100, 120, 180 };
+    // Kerb / road edge
+    constexpr Color road_edge    = {  65,  72,  90, 255 };
+    // Intersection node fill
+    constexpr Color node_fill    = {  28,  32,  45, 255 };
+    // Intersection node border
+    constexpr Color node_border  = {  80, 200, 255, 255 };
+    // Intersection label
+    constexpr Color node_label   = { 140, 180, 220, 200 };
+    // Status bar text
+    constexpr Color status_text  = { 100, 180, 100, 255 };
+}
+
+// ── Construction / destruction ────────────────────────────────────────────────
 
 Renderer::Renderer(const Config& cfg)
     : cfg_(cfg)
@@ -35,76 +57,127 @@ Renderer::~Renderer() {
     CloseWindow();
 }
 
-// ── Public interface ────────────────────────────────────────────────────────
+// ── Public interface ──────────────────────────────────────────────────────────
 
 bool Renderer::should_close() const {
     return WindowShouldClose();
 }
 
-void Renderer::render_frame(const SimState& state) {
+void Renderer::render_frame(const SimState& state, const RoadNetwork& network) {
     begin_frame();
-    draw_scene(state);
-    draw_imgui(state);
+    draw_network(network);
+    draw_imgui(state, network);
     end_frame();
 }
 
-// ── Private helpers ─────────────────────────────────────────────────────────
+// ── Private helpers ───────────────────────────────────────────────────────────
 
 void Renderer::begin_frame() {
     BeginDrawing();
-    ClearBackground({ 15, 15, 20, 255 }); // Dark near-black background
+    ClearBackground(pal::bg);
     rlImGuiBegin();
 }
 
-void Renderer::draw_scene(const SimState& state) {
-    // ── Milestone 1: placeholder scene ──────────────────────────────────
-    // Draw a simple animated grid to show the window is alive.
-    // Road network rendering wires in during Milestone 2+.
-
-    const int W = GetScreenWidth();
-    const int H = GetScreenHeight();
-
-    // Subtle grid
-    const int cell = 80;
-    const Color gridColor = { 35, 40, 55, 255 };
-    for (int x = 0; x < W; x += cell)
-        DrawLine(x, 0, x, H, gridColor);
-    for (int y = 0; y < H; y += cell)
-        DrawLine(0, y, W, y, gridColor);
-
-    // Centre logo / placeholder text
-    const char* title = "SyntraQ";
-    const int   fontSize = 48;
-    const int   tw = MeasureText(title, fontSize);
-    DrawText(title, (W - tw) / 2, H / 2 - 80, fontSize,
-             { 80, 200, 255, 255 });
-
-    const char* sub = "Urban Traffic Simulation & Optimization";
-    const int   subSize = 20;
-    const int   sw = MeasureText(sub, subSize);
-    DrawText(sub, (W - sw) / 2, H / 2 - 20, subSize,
-             { 140, 160, 180, 200 });
-
-    // Tick counter (bottom-left)
-    std::string tickStr =
-        "Tick: " + std::to_string(state.tick) +
-        "   Elapsed: " + std::to_string(static_cast<int>(state.elapsed_s)) + "s";
-    DrawText(tickStr.c_str(), 16, H - 36, 18, { 100, 180, 100, 255 });
+// Helper: draw a thick line between two points with a given half-width.
+// We approximate it with DrawLineEx.
+static void draw_road_segment(Vector2 a, Vector2 b, float thickness, Color c) {
+    DrawLineEx(a, b, thickness, c);
 }
 
-void Renderer::draw_imgui(const SimState& state) {
-    // ── Debug overlay (Milestone 1) ──────────────────────────────────────
-    ImGui::SetNextWindowPos({ 10.0f, 10.0f }, ImGuiCond_Once);
-    ImGui::SetNextWindowSize({ 280.0f, 130.0f }, ImGuiCond_Once);
+void Renderer::draw_network(const RoadNetwork& network) {
+    // ── Draw roads ────────────────────────────────────────────────────────
+    // We want: filled road body, edge lines, and dashed centre-lane dividers.
+    // Raylib has no thick polygon primitive, so we use DrawLineEx for the body
+    // (thick enough to look like a road) and DrawLine for the kerb lines.
+
+    for (const auto& [rid, road] : network.roads()) {
+        const Intersection* src = network.intersection(road.from);
+        const Intersection* dst = network.intersection(road.to);
+        if (!src || !dst) continue;
+
+        const Vector2 a{ src->position.x, src->position.y };
+        const Vector2 b{ dst->position.x, dst->position.y };
+
+        // Each lane is 3.5 m → scaled to pixels; we cap visual width
+        const float lane_px    = 14.f;  // visual lane width in pixels
+        const float road_width = static_cast<float>(road.lane_count()) * lane_px;
+
+        // Road surface
+        draw_road_segment(a, b, road_width, pal::road_fill);
+
+        // Kerb lines (thin, slightly offset — approximated along the segment)
+        draw_road_segment(a, b, road_width + 2.f, pal::road_edge);
+        // Re-draw road fill on top to get an edge effect
+        draw_road_segment(a, b, road_width - 2.f, pal::road_fill);
+
+        // Lane dividers — drawn as dots along the centre-line
+        // Only draw if this is the "forward" direction (from < to) to avoid
+        // drawing twice for bi-directional pairs.
+        if (static_cast<uint32_t>(road.from) < static_cast<uint32_t>(road.to)) {
+            const float len = std::hypot(b.x - a.x, b.y - a.y);
+            if (len > 0.f && road.lane_count() > 1) {
+                const float dx = (b.x - a.x) / len;
+                const float dy = (b.y - a.y) / len;
+                // Dash every 18 px, 9 px on, 9 px off
+                constexpr float dash = 9.f;
+                constexpr float gap  = 9.f;
+                float t = gap;
+                while (t + dash < len) {
+                    Vector2 p0{ a.x + dx * t,        a.y + dy * t };
+                    Vector2 p1{ a.x + dx * (t + dash), a.y + dy * (t + dash) };
+                    DrawLineEx(p0, p1, 1.5f, pal::lane_divider);
+                    t += dash + gap;
+                }
+            }
+        }
+    }
+
+    // ── Draw intersections ────────────────────────────────────────────────
+    constexpr float NODE_RADIUS = 10.f;
+    for (const auto& [iid, node] : network.intersections()) {
+        const float cx = node.position.x;
+        const float cy = node.position.y;
+
+        // Filled circle + border ring
+        DrawCircle(static_cast<int>(cx), static_cast<int>(cy),
+                   NODE_RADIUS,     pal::node_fill);
+        DrawCircleLines(static_cast<int>(cx), static_cast<int>(cy),
+                        NODE_RADIUS, pal::node_border);
+
+        // Label
+        if (!node.name.empty()) {
+            const int fs = 10;
+            const int tw = MeasureText(node.name.c_str(), fs);
+            DrawText(node.name.c_str(),
+                     static_cast<int>(cx) - tw / 2,
+                     static_cast<int>(cy) + static_cast<int>(NODE_RADIUS) + 3,
+                     fs, pal::node_label);
+        }
+    }
+
+    // ── Status bar ────────────────────────────────────────────────────────
+    const int H = GetScreenHeight();
+    std::string status =
+        "Intersections: " + std::to_string(network.intersection_count()) +
+        "   Roads: "      + std::to_string(network.road_count());
+    DrawText(status.c_str(), 16, H - 36, 18, pal::status_text);
+}
+
+void Renderer::draw_imgui(const SimState& state, const RoadNetwork& network) {
+    ImGui::SetNextWindowPos ({ 10.f,  10.f }, ImGuiCond_Once);
+    ImGui::SetNextWindowSize({ 300.f, 160.f }, ImGuiCond_Once);
     ImGui::Begin("SyntraQ Debug", nullptr,
                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize);
 
-    ImGui::Text("Milestone 1 — Foundation");
+    ImGui::Text("Milestone 2 — Road Network");
     ImGui::Separator();
-    ImGui::Text("Tick   : %llu", static_cast<unsigned long long>(state.tick));
-    ImGui::Text("Elapsed: %.2f s", state.elapsed_s);
-    ImGui::Text("FPS    : %.1f", GetFPS());
-    ImGui::Text("Status : %s", state.running ? "Running" : "Paused");
+    ImGui::Text("Tick          : %llu",
+                static_cast<unsigned long long>(state.tick));
+    ImGui::Text("Elapsed       : %.2f s", state.elapsed_s);
+    ImGui::Text("FPS           : %.1f",   GetFPS());
+    ImGui::Separator();
+    ImGui::Text("Intersections : %u", network.intersection_count());
+    ImGui::Text("Roads         : %u", network.road_count());
 
     ImGui::End();
 }

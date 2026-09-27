@@ -36,5 +36,6 @@ endmacro()
 # ---------------------------------------------------------------------------
 # Test targets
 # ---------------------------------------------------------------------------
-syntraq_add_test(test_config      test_config.cpp)
-syntraq_add_test(test_simulation  test_simulation.cpp)
+syntraq_add_test(test_config       test_config.cpp)
+syntraq_add_test(test_simulation   test_simulation.cpp)
+syntraq_add_test(test_road_network test_road_network.cpp)

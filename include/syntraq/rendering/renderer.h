@@ -4,7 +4,7 @@
 // syntraq/rendering/renderer.h
 //
 // Renderer abstraction — wraps Raylib window lifecycle and drawing.
-// The Renderer reads SimState; it never modifies Simulation internals.
+// The Renderer reads SimState and RoadNetwork; it never modifies them.
 // Dear ImGui is set up here via rlImGui so debug overlays can be added
 // incrementally in future milestones.
 //
@@ -15,6 +15,7 @@
 
 #include "syntraq/core/config.h"
 #include "syntraq/simulation/simulation.h"
+#include "syntraq/world/road_network.h"
 
 namespace syntraq {
 
@@ -31,16 +32,16 @@ public:
     Renderer(Renderer&&)                 = delete;
     Renderer& operator=(Renderer&&)      = delete;
 
-    /// Returns false when the user closes the window.
+    /// Returns true when the user closes the window.
     [[nodiscard]] bool should_close() const;
 
-    /// One frame: begin-frame → draw → imgui → end-frame.
-    void render_frame(const SimState& state);
+    /// One frame: begin-frame → draw network → draw ImGui overlay → end-frame.
+    void render_frame(const SimState& state, const RoadNetwork& network);
 
 private:
     void begin_frame();
-    void draw_scene(const SimState& state);
-    void draw_imgui(const SimState& state);
+    void draw_network(const RoadNetwork& network);
+    void draw_imgui(const SimState& state, const RoadNetwork& network);
     void end_frame();
 
     const Config& cfg_;

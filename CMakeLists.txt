@@ -90,6 +90,7 @@ target_compile_options(rlimgui PRIVATE
 add_library(syntraq_core STATIC
     src/core/config.cpp
     src/simulation/simulation.cpp
+    src/world/road_network.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
