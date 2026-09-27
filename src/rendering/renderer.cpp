@@ -574,7 +574,7 @@ SimControlAction Renderer::draw_imgui(const SimState&    state,
 
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0); ImGui::Text("Render FPS");
-            ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f", GetFPS());
+            ImGui::TableSetColumnIndex(1); ImGui::Text("%d", GetFPS());
 
             ImGui::EndTable();
         }
