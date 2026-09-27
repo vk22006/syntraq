@@ -30,6 +30,14 @@ inline constexpr RoadId kInvalidRoadId{
     std::numeric_limits<uint32_t>::max()
 };
 
+// ── Vehicle ID ───────────────────────────────────────────────────────────────
+
+enum class VehicleId : uint32_t {};
+
+inline constexpr VehicleId kInvalidVehicleId{
+    std::numeric_limits<uint32_t>::max()
+};
+
 } // namespace syntraq
 
 // ── std::hash specialisations ────────────────────────────────────────────────
@@ -47,6 +55,13 @@ struct hash<syntraq::IntersectionId> {
 template <>
 struct hash<syntraq::RoadId> {
     size_t operator()(syntraq::RoadId id) const noexcept {
+        return hash<uint32_t>{}(static_cast<uint32_t>(id));
+    }
+};
+
+template <>
+struct hash<syntraq::VehicleId> {
+    size_t operator()(syntraq::VehicleId id) const noexcept {
         return hash<uint32_t>{}(static_cast<uint32_t>(id));
     }
 };
