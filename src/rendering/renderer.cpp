@@ -161,10 +161,12 @@ void Renderer::take_screenshot(const std::string& path) const {
     TakeScreenshot(path.c_str());
 }
 
-SimControlAction Renderer::render_frame(const SimState&             state,
-                                        const RoadNetwork&          network,
-                                        const std::vector<Vehicle>& vehicles,
-                                        float                       current_speed_scale) {
+SimControlAction Renderer::render_frame(
+    const SimState&                                                    state,
+    const RoadNetwork&                                                 network,
+    const std::vector<Vehicle>&                                        vehicles,
+    float                                                              current_speed_scale,
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
     update_camera(network);
 
     begin_frame();
@@ -173,12 +175,15 @@ SimControlAction Renderer::render_frame(const SimState&             state,
     BeginMode2D(camera_->cam);
     draw_world_grid();
     draw_network(network);
+    if (debug_flags_.show_traffic_signals && signal_controllers) {
+        draw_traffic_signals(network, *signal_controllers);
+    }
     draw_vehicles(network, vehicles);
     EndMode2D();
 
     // ── Screen Space HUD & UI Overlays ─────────────────────────────────────
     draw_status_bar(state, current_speed_scale);
-    SimControlAction action = draw_imgui(state, network, current_speed_scale);
+    SimControlAction action = draw_imgui(state, network, current_speed_scale, signal_controllers);
 
     end_frame();
 
@@ -359,6 +364,109 @@ void Renderer::draw_network(const RoadNetwork& network) {
     }
 }
 
+void Renderer::draw_traffic_signals(
+    const RoadNetwork&                                                 network,
+    const std::unordered_map<IntersectionId, TrafficSignalController>& controllers) {
+
+    constexpr float kLaneWidthPx        = 14.0f;
+    constexpr float kStopDistFromCenter = 26.0f;
+
+    for (const auto& [inter_id, controller] : controllers) {
+        const Intersection* center = network.intersection(inter_id);
+        if (!center) continue;
+
+        const Vector2 center_pos{ center->position.x, center->position.y };
+
+        for (const auto& [road_id, light] : controller.lights()) {
+            const Road* road = network.road(road_id);
+            if (!road) continue;
+
+            const Intersection* from_node = network.intersection(road->from);
+            if (!from_node) continue;
+
+            const float dx = center_pos.x - from_node->position.x;
+            const float dy = center_pos.y - from_node->position.y;
+            const float len = std::hypot(dx, dy);
+            if (len <= 0.001f) continue;
+
+            const float udx = dx / len;
+            const float udy = dy / len;
+            const float perp_x = -udy;
+            const float perp_y =  udx;
+
+            const float road_w = static_cast<float>(road->lane_count()) * kLaneWidthPx;
+
+            // 1. Draw stop line across incoming traffic lane(s)
+            const Vector2 stop_bar_mid{
+                center_pos.x - udx * kStopDistFromCenter + perp_x * (road_w * 0.25f),
+                center_pos.y - udy * kStopDistFromCenter + perp_y * (road_w * 0.25f)
+            };
+            const Vector2 stop_bar_p1{
+                stop_bar_mid.x - perp_x * (road_w * 0.45f),
+                stop_bar_mid.y - perp_y * (road_w * 0.45f)
+            };
+            const Vector2 stop_bar_p2{
+                stop_bar_mid.x + perp_x * (road_w * 0.45f),
+                stop_bar_mid.y + perp_y * (road_w * 0.45f)
+            };
+            DrawLineEx(stop_bar_p1, stop_bar_p2, 2.5f, { 240, 242, 248, 220 });
+
+            // 2. Traffic light housing box mounted on the right curb
+            const float housing_side_offset = road_w * 0.5f + 7.5f;
+            const Vector2 box_pos{
+                center_pos.x - udx * (kStopDistFromCenter - 2.0f) + perp_x * housing_side_offset,
+                center_pos.y - udy * (kStopDistFromCenter - 2.0f) + perp_y * housing_side_offset
+            };
+
+            constexpr float kBoxW = 8.0f;
+            constexpr float kBoxH = 20.0f;
+            const Rectangle housing_rec{
+                box_pos.x - kBoxW * 0.5f,
+                box_pos.y - kBoxH * 0.5f,
+                kBoxW,
+                kBoxH
+            };
+
+            DrawRectangleRounded(housing_rec, 0.35f, 4, { 18, 22, 28, 245 });
+            DrawRectangleRoundedLines(housing_rec, 0.35f, 4, { 55, 65, 80, 255 });
+
+            // 3. Three lamp lenses: Red, Yellow, Green
+            const Vector2 red_pos   { box_pos.x, box_pos.y - 5.5f };
+            const Vector2 yellow_pos{ box_pos.x, box_pos.y };
+            const Vector2 green_pos { box_pos.x, box_pos.y + 5.5f };
+
+            constexpr float kLensR = 2.2f;
+
+            // Red lens
+            if (light.color == SignalColor::Red) {
+                DrawCircleV(red_pos, 4.8f, { 255, 50, 50, 75 });
+                DrawCircleV(red_pos, kLensR, { 255, 45, 45, 255 });
+                DrawCircleV({ red_pos.x - 0.6f, red_pos.y - 0.6f }, 0.7f, { 255, 200, 200, 220 });
+            } else {
+                DrawCircleV(red_pos, kLensR, { 65, 20, 20, 240 });
+            }
+
+            // Yellow lens
+            if (light.color == SignalColor::Yellow) {
+                DrawCircleV(yellow_pos, 4.8f, { 255, 200, 30, 80 });
+                DrawCircleV(yellow_pos, kLensR, { 255, 205, 35, 255 });
+                DrawCircleV({ yellow_pos.x - 0.6f, yellow_pos.y - 0.6f }, 0.7f, { 255, 250, 200, 220 });
+            } else {
+                DrawCircleV(yellow_pos, kLensR, { 65, 52, 15, 240 });
+            }
+
+            // Green lens
+            if (light.color == SignalColor::Green) {
+                DrawCircleV(green_pos, 4.8f, { 45, 245, 105, 80 });
+                DrawCircleV(green_pos, kLensR, { 45, 245, 105, 255 });
+                DrawCircleV({ green_pos.x - 0.6f, green_pos.y - 0.6f }, 0.7f, { 210, 255, 225, 220 });
+            } else {
+                DrawCircleV(green_pos, kLensR, { 15, 58, 25, 240 });
+            }
+        }
+    }
+}
+
 void Renderer::draw_vehicles(const RoadNetwork&          network,
                             const std::vector<Vehicle>& vehicles) {
     constexpr float kCarLength  = 13.0f;
@@ -482,9 +590,11 @@ void Renderer::draw_status_bar(const SimState& state, float current_speed_scale)
     DrawText(buf, 12, static_cast<int>(screen_h - 19.0f), 12, pal::status_text);
 }
 
-SimControlAction Renderer::draw_imgui(const SimState&    state,
-                                      const RoadNetwork& network,
-                                      float              current_speed_scale) {
+SimControlAction Renderer::draw_imgui(
+    const SimState&                                                    state,
+    const RoadNetwork&                                                 network,
+    float                                                              current_speed_scale,
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
     SimControlAction action;
 
     const float screen_w = static_cast<float>(GetScreenWidth());
@@ -614,6 +724,43 @@ SimControlAction Renderer::draw_imgui(const SimState&    state,
 
             ImGui::EndTable();
         }
+
+        // ── Traffic Signals (Baseline) ─────────────────────────────────────
+        if (signal_controllers && !signal_controllers->empty()) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC SIGNALS (BASELINE)");
+            ImGui::Separator();
+
+            if (ImGui::BeginTable("SignalControllersTable", 3, ImGuiTableFlags_SizingFixedFit)) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::Text("Junction");
+                ImGui::TableSetColumnIndex(1); ImGui::Text("Stage");
+                ImGui::TableSetColumnIndex(2); ImGui::Text("Remaining");
+
+                for (const auto& [inter_id, controller] : *signal_controllers) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::Text("I-%u", static_cast<uint32_t>(inter_id));
+
+                    ImGui::TableSetColumnIndex(1);
+                    switch (controller.current_stage()) {
+                        case PhaseStage::Green:
+                            ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "GREEN");
+                            break;
+                        case PhaseStage::Yellow:
+                            ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.25f, 1.00f), "YELLOW");
+                            break;
+                        case PhaseStage::AllRed:
+                            ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.35f, 1.00f), "ALL-RED");
+                            break;
+                    }
+
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::Text("%.1f s", controller.stage_remaining_s());
+                }
+                ImGui::EndTable();
+            }
+        }
     }
 
     // ── 3. View & Debug Toggles ────────────────────────────────────────────
@@ -625,6 +772,7 @@ SimControlAction Renderer::draw_imgui(const SimState&    state,
     ImGui::Checkbox("Road IDs",             &debug_flags_.show_road_ids);
     ImGui::Checkbox("Lane Boundaries",      &debug_flags_.show_lane_boundaries);
     ImGui::Checkbox("Vehicle Vectors",      &debug_flags_.show_vehicle_vectors);
+    ImGui::Checkbox("Traffic Signals",      &debug_flags_.show_traffic_signals);
     ImGui::Checkbox("Show Debug Statistics", &debug_flags_.show_debug_statistics);
 
     ImGui::End();
