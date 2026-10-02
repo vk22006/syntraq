@@ -19,12 +19,38 @@ Simulation::Simulation(Config cfg)
     , accumulator_(0.0f)
     , time_scale_ (1.0f)
 {
+    init_default_signals();
+}
+
+void Simulation::init_default_signals() {
+    signal_controllers_.clear();
+    if (!cfg_.enable_traffic_signals) return;
+
+    for (const auto& [id, inter] : network_.intersections()) {
+        const auto incoming = network_.incoming_roads(id);
+        if (incoming.size() > 1) {
+            auto c = TrafficSignalController::make_fixed_time(
+                network_,
+                id,
+                cfg_.default_green_duration_s,
+                cfg_.default_yellow_duration_s,
+                cfg_.default_all_red_duration_s);
+            if (c.is_valid()) {
+                signal_controllers_[id] = std::move(c);
+            }
+        }
+    }
 }
 
 void Simulation::tick() {
     if (!state_.running) return;
 
-    // ── 1. Try to spawn a new vehicle ─────────────────────────────────────
+    // ── 1. Advance traffic signal controllers ─────────────────────────────
+    for (auto& [id, controller] : signal_controllers_) {
+        controller.tick(cfg_.dt_seconds);
+    }
+
+    // ── 2. Try to spawn a new vehicle ─────────────────────────────────────
     auto opt = spawner_.try_spawn(network_,
                                   static_cast<uint32_t>(vehicles_.size()),
                                   state_.elapsed_s);
@@ -33,13 +59,13 @@ void Simulation::tick() {
         state_.total_spawned++;
     }
 
-    // ── 2. Move all vehicles ──────────────────────────────────────────────
-    movement_system_.update(vehicles_, network_, cfg_.dt_seconds);
+    // ── 3. Move all vehicles (respecting traffic signals) ─────────────────
+    movement_system_.update(vehicles_, network_, signal_controllers_, cfg_.dt_seconds);
 
-    // ── 3. Despawn arrived vehicles ───────────────────────────────────────
+    // ── 4. Despawn arrived vehicles ───────────────────────────────────────
     despawn_arrived();
 
-    // ── 4. Advance simulation clock ───────────────────────────────────────
+    // ── 5. Advance simulation clock ───────────────────────────────────────
     state_.elapsed_s      += cfg_.dt_seconds;
     state_.tick           += 1;
     state_.active_vehicles = static_cast<uint32_t>(vehicles_.size());
@@ -84,6 +110,30 @@ void Simulation::reset() {
     vehicles_.clear();
     spawner_     = VehicleSpawner{ cfg_.seed, 2.0f, 40 };
     accumulator_ = 0.0f;
+    for (auto& [id, controller] : signal_controllers_) {
+        controller.reset();
+    }
+}
+
+void Simulation::set_signal_controller(TrafficSignalController controller) {
+    const auto id = controller.intersection_id();
+    signal_controllers_[id] = std::move(controller);
+}
+
+const TrafficSignalController* Simulation::signal_controller(IntersectionId id) const noexcept {
+    const auto it = signal_controllers_.find(id);
+    if (it != signal_controllers_.end()) {
+        return &it->second;
+    }
+    return nullptr;
+}
+
+TrafficSignalController* Simulation::signal_controller(IntersectionId id) noexcept {
+    const auto it = signal_controllers_.find(id);
+    if (it != signal_controllers_.end()) {
+        return &it->second;
+    }
+    return nullptr;
 }
 
 void Simulation::set_paused(bool paused) noexcept {
