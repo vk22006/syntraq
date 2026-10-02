@@ -15,8 +15,10 @@
 // Those add in future milestones.
 //
 
+#include "syntraq/signals/traffic_signal_controller.h"
 #include "syntraq/vehicles/vehicle.h"
 #include "syntraq/world/road_network.h"
+#include <unordered_map>
 #include <vector>
 
 namespace syntraq {
@@ -25,18 +27,23 @@ class VehicleMovementSystem {
 public:
     VehicleMovementSystem() = default;
 
-    /// Update all vehicles by one timestep `dt` seconds.
-    /// Vehicles marked Arrived are NOT removed here — the caller
-    /// (Simulation) is responsible for despawning them.
+    /// Update all vehicles by one timestep `dt` seconds (unsignalized baseline).
     void update(std::vector<Vehicle>& vehicles,
                 const RoadNetwork&    network,
                 float                 dt);
 
+    /// Update all vehicles by one timestep `dt` seconds, respecting intersection traffic signals.
+    void update(std::vector<Vehicle>&                                              vehicles,
+                const RoadNetwork&                                                 network,
+                const std::unordered_map<IntersectionId, TrafficSignalController>& signal_controllers,
+                float                                                              dt);
+
 private:
     /// Advance a single vehicle. Returns true if the vehicle arrived.
-    bool update_vehicle(Vehicle&           v,
-                        const RoadNetwork& network,
-                        float              dt);
+    bool update_vehicle(Vehicle&                                                           v,
+                        const RoadNetwork&                                                 network,
+                        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+                        float                                                              dt);
 
     /// Attempt to transition vehicle onto the next road in its route.
     /// Returns true if successful, false if route is finished.
