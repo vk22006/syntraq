@@ -14,18 +14,30 @@ namespace syntraq {
 void VehicleMovementSystem::update(std::vector<Vehicle>& vehicles,
                                    const RoadNetwork&    network,
                                    float                 dt) {
+    update(vehicles, network, {}, dt);
+}
+
+void VehicleMovementSystem::update(
+    std::vector<Vehicle>&                                              vehicles,
+    const RoadNetwork&                                                 network,
+    const std::unordered_map<IntersectionId, TrafficSignalController>& signal_controllers,
+    float                                                              dt) {
+    const auto* controllers_ptr = signal_controllers.empty() ? nullptr : &signal_controllers;
     for (auto& v : vehicles) {
         if (v.state == VehicleState::Arrived) continue;
-        update_vehicle(v, network, dt);
+        update_vehicle(v, network, controllers_ptr, dt);
     }
 }
 
 // ── Private ───────────────────────────────────────────────────────────────────
 
-bool VehicleMovementSystem::update_vehicle(Vehicle&           v,
-                                           const RoadNetwork& network,
-                                           float              dt) {
-    if (v.state != VehicleState::Moving) return false;
+bool VehicleMovementSystem::update_vehicle(
+    Vehicle&                                                           v,
+    const RoadNetwork&                                                 network,
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+    float                                                              dt) {
+
+    if (v.state == VehicleState::Arrived) return true;
 
     const Road* road = network.road(v.current_road);
     if (!road) {
@@ -33,7 +45,62 @@ bool VehicleMovementSystem::update_vehicle(Vehicle&           v,
         return true;
     }
 
-    // ── 1. Accelerate toward road speed limit ─────────────────────────────
+    // ── Check signal at approaching intersection (road->to) ───────────────
+    constexpr float kStopLineOffset = 2.0f; // 2m before intersection boundary
+    const float stop_line_m = std::max(0.0f, road->length_m - kStopLineOffset);
+
+    bool can_proceed = true;
+    if (signal_controllers) {
+        const auto it = signal_controllers->find(road->to);
+        if (it != signal_controllers->end()) {
+            can_proceed = it->second.can_proceed(v.current_road);
+        }
+    }
+
+    if (!can_proceed) {
+        // Red or Yellow light: vehicle must not enter the intersection
+        const float dist_to_stop = stop_line_m - v.progress_m;
+
+        if (dist_to_stop <= 0.05f) {
+            // Already at or slightly beyond stop line: hold position
+            v.state      = VehicleState::Stopped;
+            v.speed_mps  = 0.0f;
+            v.progress_m = std::min(v.progress_m, stop_line_m);
+            v.travel_time_s += dt;
+            return false;
+        }
+
+        // Braking distance under maximum deceleration: d = v^2 / (2 * a)
+        const float brake_dist = (v.speed_mps * v.speed_mps) / (2.0f * std::max(0.1f, v.decel_mps2));
+
+        if (dist_to_stop <= brake_dist + 5.0f) {
+            // Decelerate smoothly toward stop line
+            v.speed_mps = std::max(0.0f, v.speed_mps - v.decel_mps2 * dt);
+            const float step = v.speed_mps * dt;
+            v.progress_m    += step;
+            v.distance_m    += step;
+            v.travel_time_s += dt;
+
+            if (v.progress_m >= stop_line_m || v.speed_mps <= 0.0f) {
+                v.progress_m = std::min(v.progress_m, stop_line_m);
+                v.speed_mps  = 0.0f;
+                v.state      = VehicleState::Stopped;
+            }
+            return false;
+        }
+    }
+
+    // ── Can proceed (Green light or unsignalized junction) ────────────────
+    if (v.state == VehicleState::Stopped) {
+        if (can_proceed && v.accel_mps2 > 0.0f) {
+            v.state = VehicleState::Moving;
+        } else {
+            v.travel_time_s += dt;
+            return false;
+        }
+    }
+
+    // 1. Accelerate toward road speed limit
     const float target_speed = std::min(v.max_speed_mps, road->speed_limit_mps);
 
     if (v.speed_mps < target_speed) {
@@ -44,15 +111,13 @@ bool VehicleMovementSystem::update_vehicle(Vehicle&           v,
                                v.speed_mps - v.decel_mps2 * dt);
     }
 
-    // ── 2. Advance position ───────────────────────────────────────────────
+    // 2. Advance position
     const float step = v.speed_mps * dt;
     v.progress_m    += step;
     v.distance_m    += step;
     v.travel_time_s += dt;
 
-    // ── 3. Consume road-end transitions in a loop ─────────────────────────
-    // A single large dt can overshoot multiple short roads in one tick;
-    // loop until progress is within the current road or route is exhausted.
+    // 3. Consume road-end transitions in a loop
     while (v.state == VehicleState::Moving) {
         const Road* cur = network.road(v.current_road);
         if (!cur || v.progress_m < cur->length_m) break;
