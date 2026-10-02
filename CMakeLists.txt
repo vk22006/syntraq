@@ -129,6 +129,8 @@ add_library(syntraq_core STATIC
     src/vehicles/vehicle_movement_system.cpp
     src/vehicles/vehicle_spawner.cpp
     src/vehicles/route_provider.cpp
+    src/signals/traffic_light.cpp
+    src/signals/traffic_signal_controller.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include

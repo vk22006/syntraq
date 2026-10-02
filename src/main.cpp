@@ -69,7 +69,8 @@ int main(int argc, char* argv[]) {
         const auto action = renderer.render_frame(sim.state(),
                                                   sim.network(),
                                                   sim.vehicles(),
-                                                  sim.time_scale());
+                                                  sim.time_scale(),
+                                                  &sim.signal_controllers());
 
         if (action.request_pause_toggle) {
             sim.set_paused(!sim.is_paused());
