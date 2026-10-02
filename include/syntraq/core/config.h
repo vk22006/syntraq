@@ -32,6 +32,12 @@ struct Config {
     // ── Scenario (future use) ────────────────────────────────────
     std::string scenario_file{ "configs/default_scenario.json" };
 
+    // ── Traffic Signals ──────────────────────────────────────────
+    bool  enable_traffic_signals   { true };   ///< Enable baseline traffic signals
+    float default_green_duration_s { 10.0f };  ///< Fixed-time green stage duration
+    float default_yellow_duration_s{  3.0f };  ///< Fixed-time yellow stage duration
+    float default_all_red_duration_s{ 2.0f };  ///< Interphase all-red clearance duration
+
     /// Load from a JSON file; returns default config on failure.
     static Config from_file(const std::string& path);
 };
