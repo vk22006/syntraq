@@ -28,6 +28,7 @@ struct DebugRenderFlags {
     bool show_road_ids         { false };
     bool show_lane_boundaries  { false };
     bool show_vehicle_vectors  { false };
+    bool show_traffic_signals  { true };
     bool show_debug_statistics { true };
 };
 
@@ -61,10 +62,12 @@ public:
 
     /// One frame: camera update -> begin -> draw world -> ImGui -> end.
     /// Returns control actions requested by the user.
-    SimControlAction render_frame(const SimState&             state,
-                                  const RoadNetwork&          network,
-                                  const std::vector<Vehicle>& vehicles,
-                                  float                       current_speed_scale = 1.0f);
+    SimControlAction render_frame(
+        const SimState&                                                    state,
+        const RoadNetwork&                                                 network,
+        const std::vector<Vehicle>&                                        vehicles,
+        float                                                              current_speed_scale = 1.0f,
+        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers = nullptr);
 
     /// Reset camera view to center and frame the road network with comfortable margins.
     void reset_camera(const RoadNetwork& network);
@@ -80,11 +83,16 @@ private:
     void begin_frame();
     void draw_world_grid();
     void draw_network(const RoadNetwork& network);
+    void draw_traffic_signals(
+        const RoadNetwork&                                                 network,
+        const std::unordered_map<IntersectionId, TrafficSignalController>& controllers);
     void draw_vehicles(const RoadNetwork& network,
                        const std::vector<Vehicle>& vehicles);
-    SimControlAction draw_imgui(const SimState&    state,
-                                const RoadNetwork& network,
-                                float              current_speed_scale);
+    SimControlAction draw_imgui(
+        const SimState&                                                    state,
+        const RoadNetwork&                                                 network,
+        float                                                              current_speed_scale,
+        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers);
     void draw_status_bar(const SimState& state, float current_speed_scale);
     void end_frame();
 
