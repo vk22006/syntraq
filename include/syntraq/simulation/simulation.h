@@ -9,12 +9,14 @@
 //
 
 #include "syntraq/core/config.h"
+#include "syntraq/signals/traffic_signal_controller.h"
 #include "syntraq/world/road_network.h"
 #include "syntraq/vehicles/vehicle.h"
 #include "syntraq/vehicles/vehicle_movement_system.h"
 #include "syntraq/vehicles/vehicle_spawner.h"
 
 #include <cstdint>
+#include <unordered_map>
 #include <vector>
 
 namespace syntraq {
@@ -53,6 +55,15 @@ public:
     void set_time_scale(float scale) noexcept;
     [[nodiscard]] float time_scale() const noexcept;
 
+    // ── Traffic Signals ───────────────────────────────────────────────────
+    void set_signal_controller(TrafficSignalController controller);
+
+    [[nodiscard]] const TrafficSignalController* signal_controller(IntersectionId id) const noexcept;
+    [[nodiscard]]       TrafficSignalController* signal_controller(IntersectionId id)       noexcept;
+
+    [[nodiscard]] const std::unordered_map<IntersectionId, TrafficSignalController>&
+        signal_controllers() const noexcept { return signal_controllers_; }
+
     // ── Read-only accessors ───────────────────────────────────────────────
     [[nodiscard]] const SimState&     state()    const noexcept { return state_; }
     [[nodiscard]] const Config&       config()   const noexcept { return cfg_; }
@@ -62,10 +73,12 @@ public:
 
 private:
     void despawn_arrived();
+    void init_default_signals();
 
     Config                cfg_;
     SimState              state_;
     RoadNetwork           network_;
+    std::unordered_map<IntersectionId, TrafficSignalController> signal_controllers_;
     std::vector<Vehicle>  vehicles_;
     VehicleMovementSystem movement_system_;
     VehicleSpawner        spawner_;
