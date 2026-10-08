@@ -160,4 +160,4 @@ Guarantees identical, deterministic simulation progression regardless of renderi
 
 ## License
 
-This project uses MIT license. Refer [LICENSE](LICENSE) for more details.
+This project uses GNU GPL3.0 license. Refer [LICENSE](LICENSE) for more details.
