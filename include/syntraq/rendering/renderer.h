@@ -93,6 +93,31 @@ private:
         const RoadNetwork&                                                 network,
         float                                                              current_speed_scale,
         const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers);
+
+    // ── Focused UI Panel Functions (Milestone 4.5) ─────────────────────────
+    void draw_simulation_panel(
+        const SimState&    state,
+        const RoadNetwork& network,
+        float              current_speed_scale,
+        SimControlAction&  action);
+    void draw_simulation_controls(
+        const SimState&    state,
+        const RoadNetwork& network,
+        float              current_speed_scale,
+        SimControlAction&  action);
+    void draw_simulation_metrics(const SimState& state);
+    void draw_debug_controls();
+
+    void draw_traffic_panel(
+        const SimState&                                                    state,
+        const RoadNetwork&                                                 network,
+        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers);
+    void draw_signal_status(
+        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers);
+    void draw_traffic_information(
+        const SimState&    state,
+        const RoadNetwork& network);
+
     void draw_status_bar(const SimState& state, float current_speed_scale);
     void end_frame();
 
@@ -100,6 +125,8 @@ private:
     DebugRenderFlags              debug_flags_{};
     std::unique_ptr<RenderCamera> camera_;
     bool                          camera_initialized_{ false };
+    int                           last_screen_w_{ 0 };
+    int                           last_screen_h_{ 0 };
 };
 
 } // namespace syntraq
