@@ -19,6 +19,8 @@ int main(int argc, char* argv[]) {
     std::string screenshot_path;
     bool cli_headless = false;
     bool enable_debug_overlays = false;
+    int  cli_width  = 0;
+    int  cli_height = 0;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--headless" || arg == "-h") {
@@ -27,6 +29,10 @@ int main(int argc, char* argv[]) {
             enable_debug_overlays = true;
         } else if (arg == "--screenshot" && i + 1 < argc) {
             screenshot_path = argv[++i];
+        } else if (arg == "--width" && i + 1 < argc) {
+            cli_width = std::stoi(argv[++i]);
+        } else if (arg == "--height" && i + 1 < argc) {
+            cli_height = std::stoi(argv[++i]);
         } else if (arg.rfind(".json") != std::string::npos) {
             cfgPath = arg;
         }
@@ -35,6 +41,12 @@ int main(int argc, char* argv[]) {
     syntraq::Config cfg = syntraq::Config::from_file(cfgPath);
     if (cli_headless) {
         cfg.headless = true;
+    }
+    if (cli_width > 0) {
+        cfg.window_width = cli_width;
+    }
+    if (cli_height > 0) {
+        cfg.window_height = cli_height;
     }
 
     // ── Headless mode ────────────────────────────────────────────────────
