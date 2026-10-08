@@ -1,8 +1,8 @@
 {
   "_comment": "SyntraQ default scenario — Milestone 1 placeholder",
   "window_title": "SyntraQ",
-  "window_width": 1280,
-  "window_height": 720,
+  "window_width": 1600,
+  "window_height": 900,
   "target_fps": 60,
   "dt_seconds": 0.1,
   "seed": 42,
