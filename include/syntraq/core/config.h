@@ -19,8 +19,8 @@ namespace syntraq {
 struct Config {
     // ── Window ──────────────────────────────────────────────────
     std::string window_title{ "SyntraQ" };
-    int         window_width { 1280 };
-    int         window_height{ 720 };
+    int         window_width { 1600 };
+    int         window_height{ 900 };
     int         target_fps   { 60 };
 
     // ── Simulation ───────────────────────────────────────────────
