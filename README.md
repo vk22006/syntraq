@@ -17,6 +17,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | M3        | Autonomous vehicle simulation            | ✅ Complete |
 | M3.5      | UI & visual polish, camera, timing architecture | ✅ Complete |
 | M4        | Baseline traffic signal control (Fixed-Time) | ✅ Complete |
+| M4.5      | Three-region UI layout refactor          | ✅ Complete |
 | M5        | Shortest-path routing & pathfinding      | Planned     |
 | M6        | Adaptive & AI signal optimization        | Planned     |
 
