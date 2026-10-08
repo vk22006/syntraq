@@ -73,8 +73,8 @@ Renderer::Renderer(const Config& cfg)
     SetTargetFPS(cfg_.target_fps);
 
     camera_->cam.target   = { 0.0f, 0.0f };
-    camera_->cam.offset   = { static_cast<float>(cfg_.window_width) * 0.42f,
-                              static_cast<float>(cfg_.window_height) * 0.50f };
+    camera_->cam.offset   = { static_cast<float>(cfg_.window_width) * 0.50f,
+                              static_cast<float>(cfg_.window_height - 26) * 0.50f };
     camera_->cam.rotation = 0.0f;
     camera_->cam.zoom     = 1.0f;
 
@@ -146,12 +146,12 @@ void Renderer::reset_camera(const RoadNetwork& network) {
     const float screen_h = static_cast<float>(GetScreenHeight());
 
     camera_->cam.target   = { center_x, center_y };
-    // Bias offset slightly left to balance the right-hand ImGui panel
-    camera_->cam.offset   = { screen_w * 0.42f, screen_h * 0.50f };
+    camera_->cam.offset   = { screen_w * 0.50f, (screen_h - 26.0f) * 0.50f };
     camera_->cam.rotation = 0.0f;
 
-    const float zoom_x = (screen_w * 0.65f) / std::max(net_w, 1.0f);
-    const float zoom_y = (screen_h * 0.78f) / std::max(net_h, 1.0f);
+    // Viewport width between left and right side panels (~56% of screen)
+    const float zoom_x = (screen_w * 0.56f) / std::max(net_w, 1.0f);
+    const float zoom_y = ((screen_h - 26.0f) * 0.82f) / std::max(net_h, 1.0f);
     camera_->cam.zoom  = std::clamp(std::min(zoom_x, zoom_y),
                                     camera_->min_zoom,
                                     camera_->max_zoom);
@@ -240,7 +240,7 @@ void Renderer::update_camera(const RoadNetwork& network) {
 
     // 3. Keep viewport center aligned if window resizes while keeping relative target
     if (IsWindowResized()) {
-        camera_->cam.offset = { screen_w * 0.42f, screen_h * 0.50f };
+        camera_->cam.offset = { screen_w * 0.50f, (screen_h - 26.0f) * 0.50f };
     }
 }
 
@@ -590,46 +590,71 @@ void Renderer::draw_status_bar(const SimState& state, float current_speed_scale)
     DrawText(buf, 12, static_cast<int>(screen_h - 19.0f), 12, pal::status_text);
 }
 
-SimControlAction Renderer::draw_imgui(
-    const SimState&                                                    state,
-    const RoadNetwork&                                                 network,
-    float                                                              current_speed_scale,
-    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
-    SimControlAction action;
-
-    const float screen_w = static_cast<float>(GetScreenWidth());
-    ImGui::SetNextWindowPos({ screen_w - 330.0f, 16.0f }, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({ 314.0f, 0.0f }, ImGuiCond_FirstUseEver);
-
-    ImGui::Begin("SyntraQ Control Center", nullptr,
-                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize);
-
-    // ── 1. Simulation Controls ─────────────────────────────────────────────
+void Renderer::draw_simulation_controls(
+    const SimState&    state,
+    const RoadNetwork& network,
+    float              current_speed_scale,
+    SimControlAction&  action) {
     ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "SIMULATION CONTROLS");
     ImGui::Separator();
 
-    // Pause / Resume toggle button
-    if (state.running) {
-        if (ImGui::Button("Pause (Space)", ImVec2(100.0f, 26.0f))) {
-            action.request_pause_toggle = true;
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+
+    // Responsive 3-button row (or wrap if narrow)
+    const char* pause_label = state.running
+        ? (avail_w >= 300.0f ? "Pause (Space)" : "Pause")
+        : (avail_w >= 300.0f ? "Resume (Space)" : "Resume");
+
+    if (avail_w >= 240.0f) {
+        const float btn_w = (avail_w - 2.0f * spacing) / 3.0f;
+        if (state.running) {
+            if (ImGui::Button(pause_label, ImVec2(btn_w, 26.0f))) {
+                action.request_pause_toggle = true;
+            }
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.50f, 0.30f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.60f, 0.35f, 1.00f));
+            if (ImGui::Button(pause_label, ImVec2(btn_w, 26.0f))) {
+                action.request_pause_toggle = true;
+            }
+            ImGui::PopStyleColor(2);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Shortcut: Space bar");
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Reset Sim", ImVec2(btn_w, 26.0f))) {
+            action.request_reset = true;
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Reset View", ImVec2(btn_w, 26.0f))) {
+            reset_camera(network);
         }
     } else {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.50f, 0.30f, 1.00f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.60f, 0.35f, 1.00f));
-        if (ImGui::Button("Resume (Space)", ImVec2(100.0f, 26.0f))) {
-            action.request_pause_toggle = true;
+        if (state.running) {
+            if (ImGui::Button("Pause (Space)", ImVec2(avail_w, 26.0f))) {
+                action.request_pause_toggle = true;
+            }
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.50f, 0.30f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.60f, 0.35f, 1.00f));
+            if (ImGui::Button("Resume (Space)", ImVec2(avail_w, 26.0f))) {
+                action.request_pause_toggle = true;
+            }
+            ImGui::PopStyleColor(2);
         }
-        ImGui::PopStyleColor(2);
-    }
 
-    ImGui::SameLine();
-    if (ImGui::Button("Reset Sim", ImVec2(90.0f, 26.0f))) {
-        action.request_reset = true;
-    }
-
-    ImGui::SameLine();
-    if (ImGui::Button("Reset View", ImVec2(90.0f, 26.0f))) {
-        reset_camera(network);
+        const float half_w = (avail_w - spacing) * 0.5f;
+        if (ImGui::Button("Reset Sim", ImVec2(half_w, 26.0f))) {
+            action.request_reset = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Reset View", ImVec2(half_w, 26.0f))) {
+            reset_camera(network);
+        }
     }
 
     // Speed multiplier buttons
@@ -637,6 +662,7 @@ SimControlAction Renderer::draw_imgui(
     ImGui::Text("Speed Multiplier:");
     const float speed_presets[] = { 0.25f, 0.50f, 1.00f, 2.00f, 5.00f };
     const char* speed_labels[]  = { "0.25x", "0.5x", "1x", "2x", "5x" };
+    const float speed_btn_w     = (avail_w - 4.0f * spacing) / 5.0f;
 
     for (int i = 0; i < 5; ++i) {
         if (i > 0) ImGui::SameLine();
@@ -646,7 +672,7 @@ SimControlAction Renderer::draw_imgui(
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.65f, 0.90f, 1.00f));
         }
 
-        if (ImGui::Button(speed_labels[i], ImVec2(52.0f, 22.0f))) {
+        if (ImGui::Button(speed_labels[i], ImVec2(speed_btn_w, 22.0f))) {
             action.request_speed_scale = speed_presets[i];
         }
 
@@ -662,120 +688,218 @@ SimControlAction Renderer::draw_imgui(
     } else {
         ImGui::TextColored(ImVec4(0.95f, 0.40f, 0.40f, 1.00f), "Status: PAUSED");
     }
+}
 
-    // ── 2. Debug Statistics ────────────────────────────────────────────────
-    if (debug_flags_.show_debug_statistics) {
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "SIMULATION METRICS");
-        ImGui::Separator();
-
-        if (ImGui::BeginTable("SimStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::Text("Tick");
-            ImGui::TableSetColumnIndex(1); ImGui::Text("%llu", static_cast<unsigned long long>(state.tick));
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::Text("Sim Elapsed");
-            ImGui::TableSetColumnIndex(1); ImGui::Text("%.2f s", state.elapsed_s);
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::Text("Timestep (dt)");
-            ImGui::TableSetColumnIndex(1); ImGui::Text("%.3f s", cfg_.dt_seconds);
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::Text("Render FPS");
-            ImGui::TableSetColumnIndex(1); ImGui::Text("%d", GetFPS());
-
-            ImGui::EndTable();
-        }
-
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "WORLD TOPOLOGY");
-        ImGui::Separator();
-
-        if (ImGui::BeginTable("WorldStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::Text("Intersections");
-            ImGui::TableSetColumnIndex(1); ImGui::Text("%u", network.intersection_count());
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::Text("Road Segments");
-            ImGui::TableSetColumnIndex(1); ImGui::Text("%u", network.road_count());
-
-            ImGui::EndTable();
-        }
-
-        ImGui::Spacing();
-        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "VEHICLE SYSTEM");
-        ImGui::Separator();
-
-        if (ImGui::BeginTable("VehStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::Text("Active");
-            ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.active_vehicles);
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::Text("Total Spawned");
-            ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.total_spawned);
-
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::Text("Total Arrived");
-            ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.total_arrived);
-
-            ImGui::EndTable();
-        }
-
-        // ── Traffic Signals (Baseline) ─────────────────────────────────────
-        if (signal_controllers && !signal_controllers->empty()) {
-            ImGui::Spacing();
-            ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC SIGNALS (BASELINE)");
-            ImGui::Separator();
-
-            if (ImGui::BeginTable("SignalControllersTable", 3, ImGuiTableFlags_SizingFixedFit)) {
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0); ImGui::Text("Junction");
-                ImGui::TableSetColumnIndex(1); ImGui::Text("Stage");
-                ImGui::TableSetColumnIndex(2); ImGui::Text("Remaining");
-
-                for (const auto& [inter_id, controller] : *signal_controllers) {
-                    ImGui::TableNextRow();
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::Text("I-%u", static_cast<uint32_t>(inter_id));
-
-                    ImGui::TableSetColumnIndex(1);
-                    switch (controller.current_stage()) {
-                        case PhaseStage::Green:
-                            ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "GREEN");
-                            break;
-                        case PhaseStage::Yellow:
-                            ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.25f, 1.00f), "YELLOW");
-                            break;
-                        case PhaseStage::AllRed:
-                            ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.35f, 1.00f), "ALL-RED");
-                            break;
-                    }
-
-                    ImGui::TableSetColumnIndex(2);
-                    ImGui::Text("%.1f s", controller.stage_remaining_s());
-                }
-                ImGui::EndTable();
-            }
-        }
-    }
-
-    // ── 3. View & Debug Toggles ────────────────────────────────────────────
+void Renderer::draw_simulation_metrics(const SimState& state) {
     ImGui::Spacing();
-    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "VIEW & DEBUG TOGGLES");
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "SIMULATION METRICS");
     ImGui::Separator();
 
-    ImGui::Checkbox("Intersection IDs",     &debug_flags_.show_intersection_ids);
-    ImGui::Checkbox("Road IDs",             &debug_flags_.show_road_ids);
-    ImGui::Checkbox("Lane Boundaries",      &debug_flags_.show_lane_boundaries);
-    ImGui::Checkbox("Vehicle Vectors",      &debug_flags_.show_vehicle_vectors);
-    ImGui::Checkbox("Traffic Signals",      &debug_flags_.show_traffic_signals);
-    ImGui::Checkbox("Show Debug Statistics", &debug_flags_.show_debug_statistics);
+    if (ImGui::BeginTable("SimStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Tick");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%llu", static_cast<unsigned long long>(state.tick));
 
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Sim Elapsed");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%.2f s", state.elapsed_s);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Timestep (dt)");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%.3f s", cfg_.dt_seconds);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Render FPS");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%d", GetFPS());
+
+        ImGui::EndTable();
+    }
+}
+
+void Renderer::draw_debug_controls() {
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "VIEW / DEBUG");
+    ImGui::Separator();
+
+    ImGui::Checkbox("Intersection IDs",      &debug_flags_.show_intersection_ids);
+    ImGui::Checkbox("Road IDs",              &debug_flags_.show_road_ids);
+    ImGui::Checkbox("Lane Boundaries",       &debug_flags_.show_lane_boundaries);
+    ImGui::Checkbox("Vehicle Vectors",       &debug_flags_.show_vehicle_vectors);
+    ImGui::Checkbox("Traffic Signals",       &debug_flags_.show_traffic_signals);
+    ImGui::Checkbox("Debug Statistics",      &debug_flags_.show_debug_statistics);
+}
+
+void Renderer::draw_simulation_panel(
+    const SimState&    state,
+    const RoadNetwork& network,
+    float              current_speed_scale,
+    SimControlAction&  action) {
+    const float screen_w = static_cast<float>(GetScreenWidth());
+    const float screen_h = static_cast<float>(GetScreenHeight());
+
+    const float panel_w     = std::clamp(screen_w * 0.20f, 280.0f, 330.0f);
+    const float margin_x    = (screen_w < 1000.0f) ? 12.0f : 20.0f;
+    const float min_panel_w = 260.0f;
+    const float max_panel_w = std::min(420.0f, screen_w * 0.35f);
+    const float max_panel_h = std::max(200.0f, screen_h - 50.0f);
+
+    const float init_y = std::max(20.0f, (screen_h - 26.0f - 520.0f) * 0.5f);
+
+    ImGui::SetNextWindowPos({ margin_x, init_y }, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({ panel_w, 0.0f }, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(min_panel_w, 150.0f),
+        ImVec2(max_panel_w, max_panel_h));
+
+    if (ImGui::Begin("SyntraQ Simulation")) {
+        ImVec2 pos = ImGui::GetWindowPos();
+        if (pos.x < 0.0f) {
+            ImGui::SetWindowPos(ImVec2(margin_x, pos.y));
+        }
+
+        draw_simulation_controls(state, network, current_speed_scale, action);
+        if (debug_flags_.show_debug_statistics) {
+            draw_simulation_metrics(state);
+        }
+        draw_debug_controls();
+    }
     ImGui::End();
+}
+
+void Renderer::draw_signal_status(
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC SIGNALS (BASELINE)");
+    ImGui::Separator();
+
+    if (!signal_controllers || signal_controllers->empty()) {
+        ImGui::TextDisabled("No active signal controllers.");
+        return;
+    }
+
+    std::vector<std::pair<IntersectionId, const TrafficSignalController*>> sorted;
+    sorted.reserve(signal_controllers->size());
+    for (const auto& [id, controller] : *signal_controllers) {
+        sorted.emplace_back(id, &controller);
+    }
+    std::sort(sorted.begin(), sorted.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+
+    if (ImGui::BeginTable("SignalControllersTable", 3, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Junction");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("Signal State");
+        ImGui::TableSetColumnIndex(2); ImGui::Text("Remaining");
+
+        for (const auto& [inter_id, controller] : sorted) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("I-%u", static_cast<uint32_t>(inter_id));
+
+            ImGui::TableSetColumnIndex(1);
+            switch (controller->current_stage()) {
+                case PhaseStage::Green:
+                    ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "GREEN");
+                    break;
+                case PhaseStage::Yellow:
+                    ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.25f, 1.00f), "YELLOW");
+                    break;
+                case PhaseStage::AllRed:
+                    ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.35f, 1.00f), "RED");
+                    break;
+            }
+
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%.1f s", controller->stage_remaining_s());
+        }
+        ImGui::EndTable();
+    }
+}
+
+void Renderer::draw_traffic_information(
+    const SimState&    state,
+    const RoadNetwork& network) {
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "WORLD TOPOLOGY");
+    ImGui::Separator();
+
+    if (ImGui::BeginTable("WorldStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Intersections");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", network.intersection_count());
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Road Segments");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", network.road_count());
+
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "VEHICLE SYSTEM");
+    ImGui::Separator();
+
+    if (ImGui::BeginTable("VehStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Active");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.active_vehicles);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Total Spawned");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.total_spawned);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Total Arrived");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.total_arrived);
+
+        ImGui::EndTable();
+    }
+}
+
+void Renderer::draw_traffic_panel(
+    const SimState&                                                    state,
+    const RoadNetwork&                                                 network,
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
+    const float screen_w = static_cast<float>(GetScreenWidth());
+    const float screen_h = static_cast<float>(GetScreenHeight());
+
+    const float panel_w     = std::clamp(screen_w * 0.20f, 280.0f, 330.0f);
+    const float margin_x    = (screen_w < 1000.0f) ? 12.0f : 20.0f;
+    const float min_panel_w = 260.0f;
+    const float max_panel_w = std::min(420.0f, screen_w * 0.35f);
+    const float max_panel_h = std::max(200.0f, screen_h - 50.0f);
+
+    const float init_x = std::max(margin_x + panel_w + 40.0f, screen_w - panel_w - margin_x);
+    const float init_y = std::max(20.0f, (screen_h - 26.0f - 440.0f) * 0.5f);
+
+    ImGui::SetNextWindowPos({ init_x, init_y }, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({ panel_w, 0.0f }, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(min_panel_w, 150.0f),
+        ImVec2(max_panel_w, max_panel_h));
+
+    if (ImGui::Begin("SyntraQ Traffic")) {
+        ImVec2 pos  = ImGui::GetWindowPos();
+        ImVec2 size = ImGui::GetWindowSize();
+        if (pos.x + size.x > screen_w - 5.0f) {
+            float new_x = std::max(margin_x, screen_w - size.x - margin_x);
+            ImGui::SetWindowPos(ImVec2(new_x, pos.y));
+        }
+
+        draw_signal_status(signal_controllers);
+        draw_traffic_information(state, network);
+    }
+    ImGui::End();
+}
+
+SimControlAction Renderer::draw_imgui(
+    const SimState&                                                    state,
+    const RoadNetwork&                                                 network,
+    float                                                              current_speed_scale,
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
+    SimControlAction action;
+
+    draw_simulation_panel(state, network, current_speed_scale, action);
+    draw_traffic_panel(state, network, signal_controllers);
 
     return action;
 }
