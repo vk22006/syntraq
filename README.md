@@ -8,6 +8,8 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 
 ## Status
 
+> <u>**Note:**</u> SyntraQ is a research-oriented project and is currently **under active development**. Some features may be experimental or incomplete.
+
 | Milestone | Description                              | Status      |
 |-----------|------------------------------------------|-------------|
 | M1        | Project foundation & simulation loop     | ✅ Complete |
@@ -157,4 +159,4 @@ Guarantees identical, deterministic simulation progression regardless of renderi
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+This project uses MIT license. Refer [LICENSE](LICENSE) for more details.
