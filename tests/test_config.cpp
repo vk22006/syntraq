@@ -13,8 +13,8 @@ namespace syntraq {
 
 TEST(ConfigTest, DefaultValuesAreReasonable) {
     Config cfg;
-    EXPECT_EQ(cfg.window_width,  1280);
-    EXPECT_EQ(cfg.window_height, 720);
+    EXPECT_EQ(cfg.window_width,  1600);
+    EXPECT_EQ(cfg.window_height, 900);
     EXPECT_EQ(cfg.target_fps,    60);
     EXPECT_FLOAT_EQ(cfg.dt_seconds, 0.1f);
     EXPECT_EQ(cfg.seed, 42u);
