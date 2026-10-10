@@ -3,6 +3,7 @@
 //
 
 #include "syntraq/vehicles/vehicle_spawner.h"
+#include "syntraq/routing/astar_router.h"
 
 #include <algorithm>
 
@@ -15,7 +16,7 @@ VehicleSpawner::VehicleSpawner(uint32_t                              rng_seed,
     : spawn_interval_s(spawn_interval_s_)
     , max_vehicles    (max_vehicles_)
     , rng_            (rng_seed)
-    , route_provider_ (route_provider ? std::move(route_provider) : std::make_shared<GreedyRouteProvider>())
+    , route_provider_ (route_provider ? std::move(route_provider) : std::make_shared<AStarRouter>())
 {
 }
 
