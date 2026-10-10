@@ -48,7 +48,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 - **CMake ≥ 3.25**
 - **Ninja**
 - **Git**
-- Raylib 6.0 SDK at `D:\Game development projects\raylib-6.0_winarm64_msvc16` (or set via `-DRAYLIB_SDK_DIR`)
+- Raylib 6.0 SDK
 - **Python ≥ 3.10** with `pandas` and `matplotlib` (for experiment analysis)
 
 ---
