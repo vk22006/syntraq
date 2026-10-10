@@ -93,6 +93,9 @@ int main(int argc, char* argv[]) {
         if (action.request_speed_scale.has_value()) {
             sim.set_time_scale(*action.request_speed_scale);
         }
+        if (action.request_scenario.has_value()) {
+            sim.set_scenario(*action.request_scenario);
+        }
 
         frame_count++;
         if (!screenshot_path.empty() && (sim.state().active_vehicles >= 10 || frame_count >= 600)) {
