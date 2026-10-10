@@ -18,7 +18,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | M3.5      | UI & visual polish, camera, timing architecture | ✅ Complete |
 | M4        | Baseline traffic signal control (Fixed-Time) | ✅ Complete |
 | M4.5      | Three-region UI layout refactor          | ✅ Complete |
-| M5        | Shortest-path routing & pathfinding      | Planned     |
+| M5        | Shortest-path routing & pathfinding (Dijkstra & A*) | ✅ Complete |
 | M6        | Adaptive & AI signal optimization        | Planned     |
 
 ---
@@ -100,19 +100,27 @@ Or run a specific test binary directly:
 SyntraQ/
 ├── include/syntraq/
 │   ├── core/          # Config and shared types
+│   ├── world/         # Road network graph (Intersections & Roads)
+│   ├── vehicles/      # Vehicle agents, kinematics, and spawner
+│   ├── signals/       # Traffic signals (Lights, Phases, Controllers)
+│   ├── routing/       # Routing engine (Dijkstra, A*, Heuristics, Costs)
 │   ├── simulation/    # Headless simulation loop
 │   └── rendering/     # Raylib + ImGui renderer
 ├── src/
 │   ├── core/          # Config implementation
+│   ├── world/         # Road network implementation
+│   ├── vehicles/      # Vehicle systems and spawner
+│   ├── signals/       # Traffic signal controllers
+│   ├── routing/       # Dijkstra, A*, and graph generator
 │   ├── simulation/    # Simulation implementation
 │   ├── rendering/     # Renderer implementation
 │   └── main.cpp       # Entry point
-├── tests/             # GoogleTest suites
+├── tests/             # GoogleTest suites (129 tests)
+├── benchmarks/        # Reproducible routing benchmarks
 ├── configs/           # Scenario JSON files
 ├── assets/            # Fonts, textures (future)
 ├── models/            # ONNX models (future)
 ├── scripts/           # Python training scripts (future)
-├── benchmarks/        # Performance benchmarks (future)
 ├── data/              # Runtime metrics output (gitignored)
 └── docs/              # Documentation
 ```
@@ -126,7 +134,8 @@ SyntraQ/
 3. `syntraq` — thin entry point only
 4. Simulation reads Config once at startup; no global state
 5. Renderer reads `SimState`; never writes to Simulation
-6. Route generation isolated behind `IRouteProvider` interface (`GreedyRouteProvider`)
+6. Route generation isolated behind `IRouteProvider` / `IRouter` interface (A*, Dijkstra, Greedy)
+7. Modular routing engine supports configurable weighted costs (distance, travel time) and heuristics (Euclidean, Manhattan, zero)
 
 ---
 

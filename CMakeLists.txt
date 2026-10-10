@@ -131,6 +131,9 @@ add_library(syntraq_core STATIC
     src/vehicles/route_provider.cpp
     src/signals/traffic_light.cpp
     src/signals/traffic_signal_controller.cpp
+    src/routing/dijkstra_router.cpp
+    src/routing/astar_router.cpp
+    src/routing/graph_generator.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
@@ -175,6 +178,16 @@ if(WIN32 AND EXISTS "${RAYLIB_SDK_DIR}/lib/raylib.dll")
         COMMENT "Copying raylib.dll to output directory"
     )
 endif()
+
+# ---------------------------------------------------------------------------
+# Benchmarks
+# ---------------------------------------------------------------------------
+add_executable(syntraq_benchmarks benchmarks/bench_routing.cpp)
+target_link_libraries(syntraq_benchmarks PRIVATE syntraq_core)
+target_compile_options(syntraq_benchmarks PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
 
 # ---------------------------------------------------------------------------
 # Tests
