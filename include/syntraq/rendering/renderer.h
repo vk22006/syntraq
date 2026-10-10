@@ -34,9 +34,10 @@ struct DebugRenderFlags {
 
 /// Simulation commands triggered from UI buttons or keyboard shortcuts.
 struct SimControlAction {
-    bool                 request_pause_toggle{ false };
-    bool                 request_reset       { false };
-    std::optional<float> request_speed_scale {};
+    bool                           request_pause_toggle{ false };
+    bool                           request_reset       { false };
+    std::optional<float>           request_speed_scale {};
+    std::optional<TrafficScenario> request_scenario    {};
 };
 
 /// Forward declaration for internal camera storage (avoids raylib.h in header).
@@ -111,12 +112,14 @@ private:
     void draw_traffic_panel(
         const SimState&                                                    state,
         const RoadNetwork&                                                 network,
-        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers);
+        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+        SimControlAction&                                                  action);
     void draw_signal_status(
         const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers);
     void draw_traffic_information(
         const SimState&    state,
-        const RoadNetwork& network);
+        const RoadNetwork& network,
+        SimControlAction&  action);
 
     void draw_status_bar(const SimState& state, float current_speed_scale);
     void end_frame();
