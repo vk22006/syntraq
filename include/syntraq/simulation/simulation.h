@@ -64,6 +64,14 @@ public:
     [[nodiscard]] const std::unordered_map<IntersectionId, TrafficSignalController>&
         signal_controllers() const noexcept { return signal_controllers_; }
 
+    // ── Routing Engine ───────────────────────────────────────────────────
+    void set_route_provider(std::shared_ptr<const IRouteProvider> provider) {
+        spawner_.set_route_provider(std::move(provider));
+    }
+    [[nodiscard]] const IRouteProvider& route_provider() const noexcept {
+        return spawner_.route_provider();
+    }
+
     // ── Read-only accessors ───────────────────────────────────────────────
     [[nodiscard]] const SimState&     state()    const noexcept { return state_; }
     [[nodiscard]] const Config&       config()   const noexcept { return cfg_; }
