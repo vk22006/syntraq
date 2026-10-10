@@ -12,6 +12,7 @@
 #include "syntraq/signals/traffic_signal_controller.h"
 #include "syntraq/world/road_network.h"
 #include "syntraq/vehicles/vehicle.h"
+#include "syntraq/metrics/traffic_metrics.h"
 #include "syntraq/vehicles/vehicle_movement_system.h"
 #include "syntraq/vehicles/vehicle_spawner.h"
 
@@ -30,6 +31,11 @@ struct SimState {
     uint32_t        total_arrived  { 0 };   ///< Cumulative vehicles that reached destination
     uint32_t        queued_vehicles{ 0 };   ///< Current vehicles stopped in queues
     uint32_t        max_queue_len  { 0 };   ///< Maximum queue depth on any single lane
+    float           avg_speed_mps  { 0.0f }; ///< Average speed of active vehicles (m/s)
+    float           avg_wait_time_s{ 0.0f }; ///< Average waiting time of vehicles (s)
+    float           avg_travel_time_s{ 0.0f }; ///< Average travel time of vehicles (s)
+    float           throughput_vph { 0.0f }; ///< Cumulative throughput (veh/h)
+    float           congestion_ratio{ 0.0f }; ///< Fraction of active fleet in queue [0.0 .. 1.0]
     TrafficScenario scenario       { TrafficScenario::Medium };
     bool            running        { true };
 };
@@ -87,6 +93,17 @@ public:
         return spawner_.route_provider();
     }
 
+    // ── Traffic Metrics Subsystem ─────────────────────────────────────────
+    [[nodiscard]] const TrafficMetricsCollector& metrics() const noexcept { return metrics_collector_; }
+    [[nodiscard]]       TrafficMetricsCollector& metrics()       noexcept { return metrics_collector_; }
+    [[nodiscard]] RunResult get_run_result() const { return metrics_collector_.get_run_result(); }
+    [[nodiscard]] bool export_summary_csv(const std::string& filepath, bool append = false) const {
+        return metrics_collector_.export_summary_csv(filepath, append);
+    }
+    [[nodiscard]] bool export_timeseries_csv(const std::string& filepath) const {
+        return metrics_collector_.export_timeseries_csv(filepath);
+    }
+
     // ── Read-only accessors ───────────────────────────────────────────────
     [[nodiscard]] const SimState&     state()    const noexcept { return state_; }
     [[nodiscard]] const Config&       config()   const noexcept { return cfg_; }
@@ -106,6 +123,7 @@ private:
     std::vector<Vehicle>  vehicles_;
     VehicleMovementSystem movement_system_;
     VehicleSpawner        spawner_;
+    TrafficMetricsCollector metrics_collector_;
     float                 accumulator_{ 0.0f };
     float                 time_scale_ { 1.0f };
 };
