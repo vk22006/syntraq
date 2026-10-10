@@ -61,6 +61,7 @@ struct Vehicle {
 
   // ── Lifetime stats ─────────────────────────────────────────────────────
   float travel_time_s{0.f}; ///< Cumulative time since spawn
+  float wait_time_s{0.f};   ///< Cumulative time spent waiting / queued (speed < 0.5 m/s or stopped)
   float distance_m{0.f};    ///< Cumulative distance travelled
 
   // ── State ──────────────────────────────────────────────────────────────
