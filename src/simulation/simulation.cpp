@@ -28,6 +28,8 @@ Simulation::Simulation(Config cfg)
         spawner_.max_vehicles     = scenario_cfg_.max_vehicles;
     }
     state_.scenario = cfg_.scenario;
+    metrics_collector_.set_scenario(cfg_.scenario, scenario_cfg_.name);
+    metrics_collector_.set_seed(cfg_.seed);
     init_default_signals();
 }
 
@@ -77,9 +79,21 @@ void Simulation::tick() {
     // ── 5. Advance simulation clock & update metrics ──────────────────────
     state_.elapsed_s       += cfg_.dt_seconds;
     state_.tick            += 1;
-    state_.active_vehicles  = static_cast<uint32_t>(vehicles_.size());
-    state_.queued_vehicles  = queued_vehicle_count();
-    state_.max_queue_len    = max_queue_length();
+
+    metrics_collector_.record_tick(cfg_.dt_seconds,
+                                   vehicles_,
+                                   state_.total_spawned,
+                                   state_.tick);
+
+    const auto& snap        = metrics_collector_.current_snapshot();
+    state_.active_vehicles  = snap.active_vehicles;
+    state_.queued_vehicles  = snap.queued_vehicles;
+    state_.max_queue_len    = snap.max_queue_length;
+    state_.avg_speed_mps    = snap.avg_speed_mps;
+    state_.avg_wait_time_s  = snap.avg_waiting_time_s;
+    state_.avg_travel_time_s= snap.avg_travel_time_s;
+    state_.throughput_vph   = snap.throughput_vph;
+    state_.congestion_ratio = snap.congestion_ratio;
     state_.scenario         = cfg_.scenario;
 }
 
@@ -128,6 +142,9 @@ void Simulation::reset() {
     for (auto& [id, controller] : signal_controllers_) {
         controller.reset();
     }
+    metrics_collector_.reset();
+    metrics_collector_.set_scenario(cfg_.scenario, scenario_cfg_.name);
+    metrics_collector_.set_seed(scenario_cfg_.seed);
 }
 
 void Simulation::set_scenario(TrafficScenario scenario, std::optional<uint32_t> custom_seed) {
@@ -143,6 +160,9 @@ void Simulation::set_scenario(TrafficScenario scenario, std::optional<uint32_t> 
     spawner_.max_vehicles     = scenario_cfg_.max_vehicles;
     spawner_.set_seed(scenario_cfg_.seed);
     state_.scenario           = scenario;
+
+    metrics_collector_.set_scenario(scenario, scenario_cfg_.name);
+    metrics_collector_.set_seed(scenario_cfg_.seed);
 }
 
 void Simulation::set_spawn_interval(float interval_s) {
@@ -163,6 +183,7 @@ void Simulation::set_seed(uint32_t seed) {
     cfg_.seed          = seed;
     scenario_cfg_.seed = seed;
     spawner_.set_seed(seed);
+    metrics_collector_.set_seed(seed);
 }
 
 uint32_t Simulation::queued_vehicle_count() const noexcept {
@@ -236,6 +257,12 @@ float Simulation::time_scale() const noexcept {
 
 void Simulation::despawn_arrived() {
     const auto before = static_cast<uint32_t>(vehicles_.size());
+
+    for (const auto& v : vehicles_) {
+        if (v.state == VehicleState::Arrived) {
+            metrics_collector_.record_arrival(v);
+        }
+    }
 
     vehicles_.erase(
         std::remove_if(vehicles_.begin(), vehicles_.end(),
