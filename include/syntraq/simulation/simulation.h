@@ -23,12 +23,15 @@ namespace syntraq {
 
 /// Simulation state snapshot — what is known after each tick.
 struct SimState {
-    uint64_t tick          { 0 };
-    float    elapsed_s     { 0.0f };
-    uint32_t active_vehicles{ 0 };   ///< Vehicles currently on the network
-    uint32_t total_spawned { 0 };    ///< Cumulative vehicles ever spawned
-    uint32_t total_arrived { 0 };    ///< Cumulative vehicles that reached destination
-    bool     running       { true };
+    uint64_t        tick           { 0 };
+    float           elapsed_s      { 0.0f };
+    uint32_t        active_vehicles{ 0 };   ///< Vehicles currently on the network
+    uint32_t        total_spawned  { 0 };   ///< Cumulative vehicles ever spawned
+    uint32_t        total_arrived  { 0 };   ///< Cumulative vehicles that reached destination
+    uint32_t        queued_vehicles{ 0 };   ///< Current vehicles stopped in queues
+    uint32_t        max_queue_len  { 0 };   ///< Maximum queue depth on any single lane
+    TrafficScenario scenario       { TrafficScenario::Medium };
+    bool            running        { true };
 };
 
 /// Owns the simulation state and drives the update loop.
@@ -54,6 +57,18 @@ public:
 
     void set_time_scale(float scale) noexcept;
     [[nodiscard]] float time_scale() const noexcept;
+
+    // ── Traffic Scenarios & Behavior ──────────────────────────────────────
+    void set_scenario(TrafficScenario scenario, std::optional<uint32_t> custom_seed = std::nullopt);
+    [[nodiscard]] TrafficScenario current_scenario() const noexcept { return cfg_.scenario; }
+    [[nodiscard]] const TrafficScenarioConfig& scenario_config() const noexcept { return scenario_cfg_; }
+
+    void set_spawn_interval(float interval_s);
+    void set_max_vehicles(uint32_t max);
+    void set_seed(uint32_t seed);
+
+    [[nodiscard]] uint32_t queued_vehicle_count() const noexcept;
+    [[nodiscard]] uint32_t max_queue_length() const noexcept;
 
     // ── Traffic Signals ───────────────────────────────────────────────────
     void set_signal_controller(TrafficSignalController controller);
@@ -84,6 +99,7 @@ private:
     void init_default_signals();
 
     Config                cfg_;
+    TrafficScenarioConfig scenario_cfg_;
     SimState              state_;
     RoadNetwork           network_;
     std::unordered_map<IntersectionId, TrafficSignalController> signal_controllers_;
