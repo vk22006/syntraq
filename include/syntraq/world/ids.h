@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>   // std::hash
 #include <limits>
+#include <ostream>
 
 namespace syntraq {
 
@@ -22,6 +23,10 @@ inline constexpr IntersectionId kInvalidIntersectionId{
     std::numeric_limits<uint32_t>::max()
 };
 
+inline std::ostream& operator<<(std::ostream& os, IntersectionId id) {
+    return os << static_cast<uint32_t>(id);
+}
+
 // ── Road ID ──────────────────────────────────────────────────────────────────
 
 enum class RoadId : uint32_t {};
@@ -30,6 +35,10 @@ inline constexpr RoadId kInvalidRoadId{
     std::numeric_limits<uint32_t>::max()
 };
 
+inline std::ostream& operator<<(std::ostream& os, RoadId id) {
+    return os << static_cast<uint32_t>(id);
+}
+
 // ── Vehicle ID ───────────────────────────────────────────────────────────────
 
 enum class VehicleId : uint32_t {};
@@ -37,6 +46,10 @@ enum class VehicleId : uint32_t {};
 inline constexpr VehicleId kInvalidVehicleId{
     std::numeric_limits<uint32_t>::max()
 };
+
+inline std::ostream& operator<<(std::ostream& os, VehicleId id) {
+    return os << static_cast<uint32_t>(id);
+}
 
 } // namespace syntraq
 
