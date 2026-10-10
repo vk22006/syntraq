@@ -289,16 +289,18 @@ TEST(TrafficBehaviorTest, SpawnerRejectsSpawnWhenEntryLaneIsOccupied) {
     auto track = StraightTestTrack::create(100.0f, 13.89f, /* lanes = */ 1);
     VehicleSpawner spawner(/* seed = */ 42, /* spawn_interval_s = */ 1.0f, /* max = */ 10);
 
-    // Vehicle currently occupying the entrance buffer of road (progress = 2.0m)
-    auto blocking_vehicle = make_test_vehicle(VehicleId{ 0 }, track.road, 2.0f, 0.0f);
-    std::vector<Vehicle> existing = { blocking_vehicle };
+    // Vehicles currently occupying the entrance buffer of both directions (progress = 2.0m)
+    auto blocking_ab = make_test_vehicle(VehicleId{ 0 }, track.road, 2.0f, 0.0f);
+    auto blocking_ba = make_test_vehicle(VehicleId{ 1 }, track.return_road, 2.0f, 0.0f);
+    std::vector<Vehicle> existing = { blocking_ab, blocking_ba };
 
-    // Try to spawn: should be rejected due to lane occupancy
+    // Try to spawn: should be rejected due to lane occupancy regardless of direction picked by RNG
     auto spawned = spawner.try_spawn(track.network, existing, 1.5f);
     EXPECT_FALSE(spawned.has_value());
 
-    // Once blocking vehicle moves beyond entrance buffer (progress = 25.0m):
+    // Once blocking vehicles move beyond entrance buffer (progress = 25.0m):
     existing[0].progress_m = 25.0f;
+    existing[1].progress_m = 25.0f;
     spawned = spawner.try_spawn(track.network, existing, 2.0f);
     EXPECT_TRUE(spawned.has_value());
 }
