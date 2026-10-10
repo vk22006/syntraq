@@ -54,6 +54,11 @@ struct Vehicle {
   float accel_mps2{3.0f}; ///< Acceleration magnitude (m/s²)
   float decel_mps2{5.0f}; ///< Deceleration magnitude (m/s²)
 
+  // ── Dimensions & Car-Following Parameters ──────────────────────────────
+  float length_m{4.5f};       ///< Physical vehicle length along road (m)
+  float min_gap_m{2.5f};      ///< Standstill distance buffer behind leader or stop line (m)
+  float time_headway_s{1.2f}; ///< Desired time headway following lead vehicle (s)
+
   // ── Lifetime stats ─────────────────────────────────────────────────────
   float travel_time_s{0.f}; ///< Cumulative time since spawn
   float distance_m{0.f};    ///< Cumulative distance travelled
