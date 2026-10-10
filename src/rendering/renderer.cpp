@@ -817,7 +817,45 @@ void Renderer::draw_signal_status(
 
 void Renderer::draw_traffic_information(
     const SimState&    state,
-    const RoadNetwork& network) {
+    const RoadNetwork& network,
+    SimControlAction&  action) {
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC SCENARIO PRESETS");
+    ImGui::Separator();
+
+    const char* scenario_names[] = { "Low Traffic", "Medium Traffic", "High Traffic", "Rush Hour" };
+    const TrafficScenario scenarios[] = {
+        TrafficScenario::Low,
+        TrafficScenario::Medium,
+        TrafficScenario::High,
+        TrafficScenario::RushHour
+    };
+    const char* scenario_labels[] = { "Low", "Med", "High", "Rush" };
+
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float btn_w   = (avail_w - 3.0f * spacing) / 4.0f;
+
+    for (int i = 0; i < 4; ++i) {
+        if (i > 0) ImGui::SameLine();
+        const bool is_active = (state.scenario == scenarios[i]);
+        if (is_active) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.60f, 0.80f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.70f, 0.90f, 1.00f));
+        }
+
+        if (ImGui::Button(scenario_labels[i], ImVec2(btn_w, 24.0f))) {
+            action.request_scenario = scenarios[i];
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Activate %s preset", scenario_names[i]);
+        }
+
+        if (is_active) {
+            ImGui::PopStyleColor(2);
+        }
+    }
+
     ImGui::Spacing();
     ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "WORLD TOPOLOGY");
     ImGui::Separator();
@@ -844,6 +882,14 @@ void Renderer::draw_traffic_information(
         ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.active_vehicles);
 
         ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Queued Vehicles");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.queued_vehicles);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Max Queue (Lane)");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.max_queue_len);
+
+        ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0); ImGui::Text("Total Spawned");
         ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.total_spawned);
 
@@ -858,7 +904,8 @@ void Renderer::draw_traffic_information(
 void Renderer::draw_traffic_panel(
     const SimState&                                                    state,
     const RoadNetwork&                                                 network,
-    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+    SimControlAction&                                                  action) {
     const float screen_w = static_cast<float>(GetScreenWidth());
     const float screen_h = static_cast<float>(GetScreenHeight());
 
@@ -869,10 +916,10 @@ void Renderer::draw_traffic_panel(
     const float max_panel_h = std::max(200.0f, screen_h - 50.0f);
 
     const float init_x = std::max(margin_x + panel_w + 40.0f, screen_w - panel_w - margin_x);
-    const float init_y = std::max(20.0f, (screen_h - 26.0f - 440.0f) * 0.5f);
+    const float init_y = std::max(20.0f, (screen_h - 26.0f - 560.0f) * 0.5f);
 
     ImGui::SetNextWindowPos({ init_x, init_y }, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({ panel_w, 0.0f }, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({ panel_w, 560.0f }, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(min_panel_w, 150.0f),
         ImVec2(max_panel_w, max_panel_h));
@@ -886,7 +933,7 @@ void Renderer::draw_traffic_panel(
         }
 
         draw_signal_status(signal_controllers);
-        draw_traffic_information(state, network);
+        draw_traffic_information(state, network, action);
     }
     ImGui::End();
 }
@@ -899,7 +946,7 @@ SimControlAction Renderer::draw_imgui(
     SimControlAction action;
 
     draw_simulation_panel(state, network, current_speed_scale, action);
-    draw_traffic_panel(state, network, signal_controllers);
+    draw_traffic_panel(state, network, signal_controllers, action);
 
     return action;
 }
