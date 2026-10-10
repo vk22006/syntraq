@@ -149,6 +149,7 @@ void VehicleMovementSystem::update(
             if (v.state == VehicleState::Stopped && v.accel_mps2 <= 0.0f) {
                 v.speed_mps = 0.0f;
                 v.travel_time_s += dt;
+                v.wait_time_s   += dt;
                 continue;
             }
 
@@ -158,6 +159,7 @@ void VehicleMovementSystem::update(
                 v.speed_mps  = 0.0f;
                 v.state      = VehicleState::Stopped;
                 v.travel_time_s += dt;
+                v.wait_time_s   += dt;
                 continue;
             }
 
@@ -180,6 +182,9 @@ void VehicleMovementSystem::update(
             v.progress_m    += step;
             v.distance_m    += step;
             v.travel_time_s += dt;
+            if (v.speed_mps < 0.5f || v.state == VehicleState::Stopped) {
+                v.wait_time_s += dt;
+            }
 
             // Final standstill check
             if (has_obstacle && ((max_allowed_pos - v.progress_m <= 0.05f) || (step == 0.0f && v.speed_mps <= 0.1f))) {
