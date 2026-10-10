@@ -6,19 +6,28 @@
 #include "syntraq/world/road_network.h"
 
 #include <algorithm>
+#include <map>
 
 namespace syntraq {
 
 Simulation::Simulation(Config cfg)
-    : cfg_        (std::move(cfg))
-    , state_      {}
-    , network_    (make_test_map())
-    , spawner_    (cfg_.seed,
-                   /* spawn_interval_s = */ 2.0f,
-                   /* max_vehicles     = */ 40)
-    , accumulator_(0.0f)
-    , time_scale_ (1.0f)
+    : cfg_          (std::move(cfg))
+    , scenario_cfg_ (get_scenario_preset(cfg_.scenario, cfg_.seed))
+    , state_        {}
+    , network_      (make_test_map())
+    , spawner_      (cfg_.seed,
+                     cfg_.vehicle_spawn_interval_s,
+                     cfg_.max_vehicles)
+    , accumulator_  (0.0f)
+    , time_scale_   (1.0f)
 {
+    // If config specified default scenario, reflect presets
+    if (cfg_.scenario != TrafficScenario::Custom) {
+        scenario_cfg_ = get_scenario_preset(cfg_.scenario, cfg_.seed);
+        spawner_.spawn_interval_s = scenario_cfg_.spawn_interval_s;
+        spawner_.max_vehicles     = scenario_cfg_.max_vehicles;
+    }
+    state_.scenario = cfg_.scenario;
     init_default_signals();
 }
 
@@ -50,25 +59,28 @@ void Simulation::tick() {
         controller.tick(cfg_.dt_seconds);
     }
 
-    // ── 2. Try to spawn a new vehicle ─────────────────────────────────────
+    // ── 2. Try to spawn a new vehicle (with lane occupancy checks) ────────
     auto opt = spawner_.try_spawn(network_,
-                                  static_cast<uint32_t>(vehicles_.size()),
+                                  vehicles_,
                                   state_.elapsed_s);
     if (opt.has_value()) {
         vehicles_.push_back(std::move(*opt));
         state_.total_spawned++;
     }
 
-    // ── 3. Move all vehicles (respecting traffic signals) ─────────────────
+    // ── 3. Move all vehicles (respecting traffic signals and car-following)
     movement_system_.update(vehicles_, network_, signal_controllers_, cfg_.dt_seconds);
 
     // ── 4. Despawn arrived vehicles ───────────────────────────────────────
     despawn_arrived();
 
-    // ── 5. Advance simulation clock ───────────────────────────────────────
-    state_.elapsed_s      += cfg_.dt_seconds;
-    state_.tick           += 1;
-    state_.active_vehicles = static_cast<uint32_t>(vehicles_.size());
+    // ── 5. Advance simulation clock & update metrics ──────────────────────
+    state_.elapsed_s       += cfg_.dt_seconds;
+    state_.tick            += 1;
+    state_.active_vehicles  = static_cast<uint32_t>(vehicles_.size());
+    state_.queued_vehicles  = queued_vehicle_count();
+    state_.max_queue_len    = max_queue_length();
+    state_.scenario         = cfg_.scenario;
 }
 
 void Simulation::update(float dt_real) {
@@ -105,14 +117,79 @@ void Simulation::run_for(float duration_s) {
 }
 
 void Simulation::reset() {
-    state_       = SimState{};
-    network_     = make_test_map();
+    state_                 = SimState{};
+    state_.scenario        = cfg_.scenario;
+    network_               = make_test_map();
     vehicles_.clear();
-    spawner_     = VehicleSpawner{ cfg_.seed, 2.0f, 40 };
-    accumulator_ = 0.0f;
+    spawner_               = VehicleSpawner{ scenario_cfg_.seed,
+                                             scenario_cfg_.spawn_interval_s,
+                                             scenario_cfg_.max_vehicles };
+    accumulator_           = 0.0f;
     for (auto& [id, controller] : signal_controllers_) {
         controller.reset();
     }
+}
+
+void Simulation::set_scenario(TrafficScenario scenario, std::optional<uint32_t> custom_seed) {
+    cfg_.scenario  = scenario;
+    const uint32_t seed = custom_seed.value_or(cfg_.seed);
+    scenario_cfg_  = get_scenario_preset(scenario, seed);
+
+    cfg_.vehicle_spawn_interval_s = scenario_cfg_.spawn_interval_s;
+    cfg_.max_vehicles             = scenario_cfg_.max_vehicles;
+    cfg_.seed                     = scenario_cfg_.seed;
+
+    spawner_.spawn_interval_s = scenario_cfg_.spawn_interval_s;
+    spawner_.max_vehicles     = scenario_cfg_.max_vehicles;
+    spawner_.set_seed(scenario_cfg_.seed);
+    state_.scenario           = scenario;
+}
+
+void Simulation::set_spawn_interval(float interval_s) {
+    if (interval_s > 0.0f) {
+        cfg_.vehicle_spawn_interval_s   = interval_s;
+        scenario_cfg_.spawn_interval_s  = interval_s;
+        spawner_.spawn_interval_s       = interval_s;
+    }
+}
+
+void Simulation::set_max_vehicles(uint32_t max) {
+    cfg_.max_vehicles          = max;
+    scenario_cfg_.max_vehicles = max;
+    spawner_.max_vehicles      = max;
+}
+
+void Simulation::set_seed(uint32_t seed) {
+    cfg_.seed          = seed;
+    scenario_cfg_.seed = seed;
+    spawner_.set_seed(seed);
+}
+
+uint32_t Simulation::queued_vehicle_count() const noexcept {
+    uint32_t count = 0;
+    for (const auto& v : vehicles_) {
+        if (v.state == VehicleState::Stopped || (v.state == VehicleState::Moving && v.speed_mps < 0.5f)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+uint32_t Simulation::max_queue_length() const noexcept {
+    std::map<std::pair<RoadId, uint32_t>, uint32_t> lane_queues;
+    for (const auto& v : vehicles_) {
+        if (v.state == VehicleState::Stopped || (v.state == VehicleState::Moving && v.speed_mps < 0.5f)) {
+            lane_queues[{v.current_road, v.lane_index}]++;
+        }
+    }
+
+    uint32_t max_len = 0;
+    for (const auto& [lane, len] : lane_queues) {
+        if (len > max_len) {
+            max_len = len;
+        }
+    }
+    return max_len;
 }
 
 void Simulation::set_signal_controller(TrafficSignalController controller) {
