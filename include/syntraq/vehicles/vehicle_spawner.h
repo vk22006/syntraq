@@ -25,11 +25,18 @@ public:
                             uint32_t                              max_vehicles     = 50,
                             std::shared_ptr<const IRouteProvider> route_provider   = nullptr);
 
-    /// Attempt to spawn a vehicle. Returns the new Vehicle if spawning
-    /// succeeded (interval elapsed and max not reached), or nullopt otherwise.
+    /// Attempt to spawn a vehicle with lane occupancy check against existing vehicles.
+    std::optional<Vehicle> try_spawn(const RoadNetwork&          network,
+                                     const std::vector<Vehicle>& existing_vehicles,
+                                     float                       sim_elapsed_s);
+
+    /// Overload for backwards compatibility (tests without vehicle list).
     std::optional<Vehicle> try_spawn(const RoadNetwork&   network,
                                      uint32_t             active_count,
                                      float                sim_elapsed_s);
+
+    /// Re-seed the random number generator (for repeatable scenarios).
+    void set_seed(uint32_t seed);
 
     /// Build a route from `source` to `destination` using the route provider.
     /// Returns an empty vector if no path can be found.

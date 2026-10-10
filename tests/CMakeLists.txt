@@ -30,6 +30,7 @@ function(syntraq_add_test TEST_NAME SOURCE_FILE)
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
     )
     gtest_discover_tests(${TEST_NAME}
+        DISCOVERY_MODE PRE_TEST
         DISCOVERY_TIMEOUT 30
     )
 endfunction()
@@ -41,5 +42,7 @@ syntraq_add_test(test_config       test_config.cpp)
 syntraq_add_test(test_simulation   test_simulation.cpp)
 syntraq_add_test(test_road_network test_road_network.cpp)
 syntraq_add_test(test_vehicles     test_vehicles.cpp)
-syntraq_add_test(test_signals      test_signals.cpp)
-syntraq_add_test(test_routing      test_routing.cpp)
+syntraq_add_test(test_signals          test_signals.cpp)
+syntraq_add_test(test_routing          test_routing.cpp)
+syntraq_add_test(test_traffic_behavior test_traffic_behavior.cpp)
+syntraq_add_test(test_metrics          test_metrics.cpp)

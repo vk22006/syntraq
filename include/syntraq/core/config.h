@@ -13,6 +13,59 @@
 
 namespace syntraq {
 
+// ── Traffic Scenarios ─────────────────────────────────────────
+
+enum class TrafficScenario : uint8_t {
+    Low,
+    Medium,
+    High,
+    RushHour,
+    Custom,
+};
+
+struct TrafficScenarioConfig {
+    TrafficScenario scenario{ TrafficScenario::Medium };
+    std::string     name{ "Medium Traffic" };
+    float           spawn_interval_s{ 2.0f };
+    uint32_t        max_vehicles{ 40 };
+    uint32_t        seed{ 42u };
+};
+
+/// Returns preset configuration for a given repeatable traffic scenario.
+inline TrafficScenarioConfig get_scenario_preset(TrafficScenario scenario, uint32_t seed = 42u) {
+    TrafficScenarioConfig cfg;
+    cfg.scenario = scenario;
+    cfg.seed     = seed;
+    switch (scenario) {
+        case TrafficScenario::Low:
+            cfg.name             = "Low Traffic";
+            cfg.spawn_interval_s = 4.0f;
+            cfg.max_vehicles     = 15;
+            break;
+        case TrafficScenario::Medium:
+            cfg.name             = "Medium Traffic";
+            cfg.spawn_interval_s = 2.0f;
+            cfg.max_vehicles     = 35;
+            break;
+        case TrafficScenario::High:
+            cfg.name             = "High Traffic";
+            cfg.spawn_interval_s = 1.0f;
+            cfg.max_vehicles     = 60;
+            break;
+        case TrafficScenario::RushHour:
+            cfg.name             = "Rush Hour";
+            cfg.spawn_interval_s = 0.5f;
+            cfg.max_vehicles     = 100;
+            break;
+        case TrafficScenario::Custom:
+            cfg.name             = "Custom";
+            cfg.spawn_interval_s = 2.0f;
+            cfg.max_vehicles     = 40;
+            break;
+    }
+    return cfg;
+}
+
 /// All tunable simulation parameters in one plain-data struct.
 /// Populated by load_config() from a JSON file, or default-constructed
 /// for headless / test usage.
@@ -29,7 +82,12 @@ struct Config {
     float    sim_duration_s   { 300.0f }; ///< Headless run duration
     bool     headless         { false };  ///< Skip window / rendering when true
 
-    // ── Scenario (future use) ────────────────────────────────────
+    // ── Traffic Behavior & Scenario ──────────────────────────────
+    TrafficScenario scenario                { TrafficScenario::Medium };
+    float           vehicle_spawn_interval_s{ 2.0f };
+    uint32_t        max_vehicles            { 40 };
+
+    // ── Scenario File (future use) ───────────────────────────────
     std::string scenario_file{ "configs/default_scenario.json" };
 
     // ── Traffic Signals ──────────────────────────────────────────

@@ -39,11 +39,17 @@ public:
                 float                                                              dt);
 
 private:
-    /// Advance a single vehicle. Returns true if the vehicle arrived.
-    bool update_vehicle(Vehicle&                                                           v,
-                        const RoadNetwork&                                                 network,
-                        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
-                        float                                                              dt);
+    /// Calculate safe turn speed limit based on geometric angle between incoming and outgoing roads.
+    [[nodiscard]] float calculate_turn_speed(const Vehicle&     v,
+                                             const Road&        cur_road,
+                                             const RoadNetwork& network) const;
+
+    /// Check if target lane entrance on next road is occupied by another vehicle.
+    [[nodiscard]] bool is_lane_entrance_occupied(RoadId                      target_road_id,
+                                                 uint32_t                    target_lane,
+                                                 float                       clearance_needed_m,
+                                                 const std::vector<Vehicle>& vehicles,
+                                                 size_t                      self_idx) const;
 
     /// Attempt to transition vehicle onto the next road in its route.
     /// Returns true if successful, false if route is finished.
