@@ -857,23 +857,7 @@ void Renderer::draw_traffic_information(
     }
 
     ImGui::Spacing();
-    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "WORLD TOPOLOGY");
-    ImGui::Separator();
-
-    if (ImGui::BeginTable("WorldStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(0); ImGui::Text("Intersections");
-        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", network.intersection_count());
-
-        ImGui::TableNextRow();
-        ImGui::TableSetColumnIndex(0); ImGui::Text("Road Segments");
-        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", network.road_count());
-
-        ImGui::EndTable();
-    }
-
-    ImGui::Spacing();
-    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "VEHICLE SYSTEM");
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC PERFORMANCE METRICS");
     ImGui::Separator();
 
     if (ImGui::BeginTable("VehStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
@@ -890,12 +874,48 @@ void Renderer::draw_traffic_information(
         ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.max_queue_len);
 
         ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Avg Speed");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f km/h", state.avg_speed_mps * 3.6f);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Avg Wait Time");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f s", state.avg_wait_time_s);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Avg Travel Time");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f s", state.avg_travel_time_s);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Throughput");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%.0f veh/h", state.throughput_vph);
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Congestion Ratio");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f%%", state.congestion_ratio * 100.0f);
+
+        ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0); ImGui::Text("Total Spawned");
         ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.total_spawned);
 
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0); ImGui::Text("Total Arrived");
         ImGui::TableSetColumnIndex(1); ImGui::Text("%u", state.total_arrived);
+
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "WORLD TOPOLOGY");
+    ImGui::Separator();
+
+    if (ImGui::BeginTable("WorldStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Intersections");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", network.intersection_count());
+
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Road Segments");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%u", network.road_count());
 
         ImGui::EndTable();
     }
@@ -916,10 +936,10 @@ void Renderer::draw_traffic_panel(
     const float max_panel_h = std::max(200.0f, screen_h - 50.0f);
 
     const float init_x = std::max(margin_x + panel_w + 40.0f, screen_w - panel_w - margin_x);
-    const float init_y = std::max(20.0f, (screen_h - 26.0f - 560.0f) * 0.5f);
+    const float init_y = std::max(20.0f, (screen_h - 26.0f - 680.0f) * 0.5f);
 
     ImGui::SetNextWindowPos({ init_x, init_y }, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({ panel_w, 560.0f }, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({ panel_w, 680.0f }, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(min_panel_w, 150.0f),
         ImVec2(max_panel_w, max_panel_h));
@@ -932,8 +952,12 @@ void Renderer::draw_traffic_panel(
             ImGui::SetWindowPos(ImVec2(new_x, pos.y));
         }
 
-        draw_signal_status(signal_controllers);
         draw_traffic_information(state, network, action);
+
+        ImGui::Spacing();
+        if (ImGui::CollapsingHeader("TRAFFIC SIGNALS", ImGuiTreeNodeFlags_DefaultOpen)) {
+            draw_signal_status(signal_controllers);
+        }
     }
     ImGui::End();
 }
