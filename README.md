@@ -21,6 +21,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Telemetry & Metrics Engine | Decoupled tracking: throughput, waiting times, queue lengths, average speed, congestion % | ✅ Complete |
 | Experiments & Batch Pipeline | Headless execution, multi-seed evaluation, automated statistical aggregation, CSV exports | ✅ Complete |
 | Analysis & Visualization | Automated Python pipeline producing Pandas summaries and Matplotlib comparative charts | ✅ Complete |
+| Data Generation & Preprocessing | Structured 26-feature dataset extraction, dual-horizon lookahead targets, leakage-free splitting | ✅ Complete |
 | Adaptive & AI Signal Optimization | Reinforcement Learning & Neural Network adaptive traffic signal controllers | ⏳ Planned |
 
 ---
@@ -33,9 +34,9 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (124 tests) |
+| Tests          | GoogleTest + CTest (131 tests) |
 | CI             | GitHub Actions                 |
-| Data Analysis  | Python 3 (Pandas, Matplotlib)  |
+| Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | AI deployment  | ONNX Runtime (future)          |
 | AI training    | Python / PyTorch (future)      |
 
@@ -126,7 +127,7 @@ Generated charts are saved to `data/experiments/charts/`:
 
 ## Running Tests
 
-SyntraQ maintains a test suite across kinematics, signal state machines, pathfinding algorithms, queue dynamics, and metrics tracking:
+SyntraQ maintains a test suite across kinematics, signal state machines, pathfinding algorithms, queue dynamics, metrics tracking, and training data generation:
 
 ```powershell
 cd build
@@ -136,6 +137,7 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+.\build\bin\test_data_generation.exe
 .\build\bin\test_traffic_behavior.exe
 .\build\bin\test_metrics.exe
 .\build\bin\test_routing.exe
@@ -144,38 +146,58 @@ Or execute targeted test suites directly:
 
 ---
 
+## Machine Learning Data Generation & Preprocessing
+
+SyntraQ provides a complete, leakage-free pipeline for training traffic prediction models:
+
+```powershell
+# 1. Generate multi-scenario raw traffic dataset with 15s and 30s future ground-truth targets
+.\build\bin\syntraq_generate_dataset.exe --runs 5 --duration 120 --interval 1.0 --output data/dataset/raw_traffic_data.csv
+
+# 2. Preprocess, standardize, and perform run-level leakage-free train/validation/test split
+python scripts/preprocess_dataset.py --input data/dataset/raw_traffic_data.csv --output-dir data/dataset/processed
+```
+
+Generated dataset artifacts:
+- `data/dataset/processed/train.csv`, `val.csv`, `test.csv`
+- `data/dataset/processed/dataset.npz` (Ready-to-load NumPy matrices for PyTorch/TensorFlow)
+- `data/dataset/processed/metadata.json` (Feature definitions, scaler statistics, and run audit)
+- Full methodology documented in [docs/data_generation_and_features.md](docs/data_generation_and_features.md)
+
+---
+
 ## Project Structure
 
 ```
 SyntraQ/
 ├── include/syntraq/
-│   ├── core/          # Config and shared types
-│   ├── world/         # Road network graph (Intersections & Roads)
-│   ├── vehicles/      # Vehicle kinematics, car-following, and spawner
-│   ├── signals/       # Traffic signals (Phases, Controllers)
-│   ├── routing/       # Routing engine (Dijkstra, A*, Heuristics, Costs)
-│   ├── metrics/       # Telemetry subsystem (TrafficMetricsCollector, RunResult)
-│   ├── simulation/    # Headless simulation loop & state
-│   └── rendering/     # Raylib + ImGui renderer
+│   ├── core/          # Config and shared types (.hpp)
+│   ├── world/         # Road network graph (Intersections & Roads) (.hpp)
+│   ├── vehicles/      # Vehicle kinematics, car-following, and spawner (.hpp)
+│   ├── signals/       # Traffic signals (Phases, Controllers) (.hpp)
+│   ├── routing/       # Routing engine (Dijkstra, A*, Heuristics, Costs) (.hpp)
+│   ├── metrics/       # Telemetry & ML dataset collectors (.hpp)
+│   ├── simulation/    # Headless simulation loop & state (.hpp)
+│   └── rendering/     # Raylib + ImGui renderer (.hpp)
 ├── src/
 │   ├── core/          # Config implementation
 │   ├── world/         # Road network implementation
 │   ├── vehicles/      # Kinematics and queue formation systems
 │   ├── signals/       # Traffic signal controllers
 │   ├── routing/       # Dijkstra, A*, and graph generator
-│   ├── metrics/       # Telemetry collector and CSV exporters
+│   ├── metrics/       # Telemetry collector, ML data generator, CSV exporters
 │   ├── simulation/    # Simulation loop & scenario management
 │   ├── rendering/     # Renderer and three-panel UI layout
 │   └── main.cpp       # CLI parsing and application entry point
-├── experiments/       # Automated multi-scenario batch experiment runner
-├── scripts/           # Python statistical analysis and plotting pipelines
-├── tests/             # GoogleTest suites (124 tests across all subsystems)
+├── experiments/       # Baseline experiments and batch dataset generator
+├── scripts/           # Statistical analysis and ML preprocessing pipelines
+├── tests/             # GoogleTest suites (131 tests across all subsystems)
 ├── benchmarks/        # Routing engine benchmarks (Dijkstra vs A*)
 ├── configs/           # Scenario JSON configurations
-├── data/              # Experiment CSV datasets and generated charts
+├── data/              # Experiment datasets, ML training data, and generated charts
 ├── assets/            # Fonts, textures (future)
 ├── models/            # ONNX models (future)
-└── docs/              # Layout screenshots and architecture diagrams
+└── docs/              # Layout screenshots, dataset specifications, and architecture docs
 ```
 
 ---
