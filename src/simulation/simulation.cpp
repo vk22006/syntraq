@@ -30,6 +30,7 @@ Simulation::Simulation(Config cfg)
     state_.scenario = cfg_.scenario;
     metrics_collector_.set_scenario(cfg_.scenario, scenario_cfg_.name);
     metrics_collector_.set_seed(cfg_.seed);
+    data_collector_.set_run_metadata("run_001", cfg_.scenario, scenario_cfg_.name, cfg_.seed);
     init_default_signals();
 }
 
@@ -95,6 +96,16 @@ void Simulation::tick() {
     state_.throughput_vph   = snap.throughput_vph;
     state_.congestion_ratio = snap.congestion_ratio;
     state_.scenario         = cfg_.scenario;
+
+    if (data_collection_enabled_) {
+        data_collector_.update(state_.elapsed_s,
+                               network_,
+                               vehicles_,
+                               signal_controllers_,
+                               state_.total_spawned,
+                               state_.total_arrived,
+                               scenario_cfg_.spawn_interval_s);
+    }
 }
 
 void Simulation::update(float dt_real) {
@@ -145,6 +156,8 @@ void Simulation::reset() {
     metrics_collector_.reset();
     metrics_collector_.set_scenario(cfg_.scenario, scenario_cfg_.name);
     metrics_collector_.set_seed(scenario_cfg_.seed);
+    data_collector_.reset();
+    data_collector_.set_run_metadata(run_id_, cfg_.scenario, scenario_cfg_.name, scenario_cfg_.seed);
 }
 
 void Simulation::set_scenario(TrafficScenario scenario, std::optional<uint32_t> custom_seed) {
@@ -163,6 +176,20 @@ void Simulation::set_scenario(TrafficScenario scenario, std::optional<uint32_t> 
 
     metrics_collector_.set_scenario(scenario, scenario_cfg_.name);
     metrics_collector_.set_seed(scenario_cfg_.seed);
+    data_collector_.set_run_metadata(run_id_, scenario, scenario_cfg_.name, scenario_cfg_.seed);
+}
+
+void Simulation::set_run_id(std::string id) {
+    run_id_ = std::move(id);
+    data_collector_.set_run_metadata(run_id_, cfg_.scenario, scenario_cfg_.name, scenario_cfg_.seed);
+}
+
+void Simulation::enable_data_collection(bool enable, float sample_interval_s) {
+    data_collection_enabled_ = enable;
+    if (enable) {
+        data_collector_ = TrafficDataCollector(sample_interval_s);
+        data_collector_.set_run_metadata(run_id_, cfg_.scenario, scenario_cfg_.name, scenario_cfg_.seed);
+    }
 }
 
 void Simulation::set_spawn_interval(float interval_s) {
