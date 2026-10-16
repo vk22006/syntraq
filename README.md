@@ -22,6 +22,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Experiments & Batch Pipeline | Headless execution, multi-seed evaluation, automated statistical aggregation, CSV exports | ✅ Complete |
 | Analysis & Visualization | Automated Python pipeline producing Pandas summaries and Matplotlib comparative charts | ✅ Complete |
 | Data Generation & Preprocessing | Structured 26-feature dataset extraction, dual-horizon lookahead targets, leakage-free splitting | ✅ Complete |
+| Traffic Prediction Models | Baseline & ensemble models (Linear, Ridge, RF, GBDT) with R²=0.88, sub-millisecond inference | ✅ Complete |
 | Adaptive & AI Signal Optimization | Reinforcement Learning & Neural Network adaptive traffic signal controllers | ⏳ Planned |
 
 ---
@@ -166,6 +167,32 @@ Generated dataset artifacts:
 
 ---
 
+## Machine Learning Traffic Prediction
+
+SyntraQ includes baseline and ensemble regression models to predict future queue lengths and congestion:
+
+```powershell
+# Train and benchmark baseline and ensemble models (Linear, Ridge, Random Forest, Gradient Boosting)
+python scripts/train_prediction_model.py --target target_queue_15s --seed 42
+```
+
+### Model Benchmark Results (15s Horizon Future Queue Length)
+
+| Model Architecture | Val MAE | Val RMSE | Val R² | Test MAE | Test RMSE | Test R² | Max Error | Inference Latency |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Dummy (Mean)** | 6.40 veh | 8.91 veh | -0.0004 | 5.94 veh | 7.80 veh | -0.0024 | 35.73 veh | 0.02 μs |
+| **Linear Regression** | 2.90 veh | 3.85 veh | 0.8135 | 2.92 veh | 3.83 veh | 0.7585 | 13.46 veh | 0.21 μs |
+| **Ridge Regression** | 2.90 veh | 3.85 veh | 0.8131 | 2.91 veh | 3.81 veh | 0.7612 | 12.93 veh | 0.11 μs |
+| **Random Forest** | 2.26 veh | 3.46 veh | 0.8494 | 2.15 veh | 3.09 veh | 0.8431 | 12.77 veh | 34.96 μs |
+| **Gradient Boosting (Best)** | **2.09 veh** | **3.07 veh** | **0.8812** | **1.90 veh** | **2.72 veh** | **0.8779** | **10.80 veh** | **2.71 μs** |
+
+- **Winning Model Bundle**: `models/best_traffic_predictor.joblib`
+- **Evaluation Metrics JSON**: `models/evaluation_metrics.json`
+- **Diagnostic Charts**: `data/experiments/charts/prediction_vs_actual.png`
+- **Full Report & Justification**: [docs/model_evaluation_report.md](docs/model_evaluation_report.md)
+
+---
+
 ## Project Structure
 
 ```
@@ -196,7 +223,7 @@ SyntraQ/
 ├── configs/           # Scenario JSON configurations
 ├── data/              # Experiment datasets, ML training data, and generated charts
 ├── assets/            # Fonts, textures (future)
-├── models/            # ONNX models (future)
+├── models/            # Trained prediction models (joblib) & evaluation metrics (json)
 └── docs/              # Layout screenshots, dataset specifications, and architecture docs
 ```
 
