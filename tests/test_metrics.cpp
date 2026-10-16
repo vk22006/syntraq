@@ -12,10 +12,10 @@
 
 #include <gtest/gtest.h>
 
-#include "syntraq/metrics/traffic_metrics.h"
-#include "syntraq/simulation/simulation.h"
-#include "syntraq/vehicles/vehicle.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/metrics/traffic_metrics.hpp"
+#include "syntraq/simulation/simulation.hpp"
+#include "syntraq/vehicles/vehicle.hpp"
+#include "syntraq/world/road_network.hpp"
 
 #include <cmath>
 #include <filesystem>

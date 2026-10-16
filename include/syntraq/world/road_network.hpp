@@ -20,8 +20,8 @@
 // This structure is directly suitable for Dijkstra / A* in Milestone 3.
 //
 
-#include "syntraq/world/intersection.h"
-#include "syntraq/world/road.h"
+#include "syntraq/world/intersection.hpp"
+#include "syntraq/world/road.hpp"
 
 #include <optional>
 #include <span>

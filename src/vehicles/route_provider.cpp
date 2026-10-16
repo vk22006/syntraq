@@ -2,7 +2,7 @@
 // src/vehicles/route_provider.cpp
 //
 
-#include "syntraq/vehicles/route_provider.h"
+#include "syntraq/vehicles/route_provider.hpp"
 
 #include <unordered_set>
 

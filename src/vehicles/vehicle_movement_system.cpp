@@ -2,7 +2,7 @@
 // src/vehicles/vehicle_movement_system.cpp
 //
 
-#include "syntraq/vehicles/vehicle_movement_system.h"
+#include "syntraq/vehicles/vehicle_movement_system.hpp"
 
 #include <algorithm>
 #include <cmath>

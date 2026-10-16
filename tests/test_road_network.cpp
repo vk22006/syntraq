@@ -6,9 +6,9 @@
 // make_test_map(), and the Road/Intersection types.
 //
 
-#include "syntraq/world/road_network.h"
-#include "syntraq/world/road.h"
-#include "syntraq/world/intersection.h"
+#include "syntraq/world/road_network.hpp"
+#include "syntraq/world/road.hpp"
+#include "syntraq/world/intersection.hpp"
 
 #include <gtest/gtest.h>
 

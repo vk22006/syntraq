@@ -13,14 +13,14 @@
 
 #include <gtest/gtest.h>
 
-#include "syntraq/routing/astar_router.h"
-#include "syntraq/routing/dijkstra_router.h"
-#include "syntraq/routing/graph_generator.h"
-#include "syntraq/routing/heuristic.h"
-#include "syntraq/routing/route_cost.h"
-#include "syntraq/vehicles/vehicle_movement_system.h"
-#include "syntraq/vehicles/vehicle_spawner.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/routing/astar_router.hpp"
+#include "syntraq/routing/dijkstra_router.hpp"
+#include "syntraq/routing/graph_generator.hpp"
+#include "syntraq/routing/heuristic.hpp"
+#include "syntraq/routing/route_cost.hpp"
+#include "syntraq/vehicles/vehicle_movement_system.hpp"
+#include "syntraq/vehicles/vehicle_spawner.hpp"
+#include "syntraq/world/road_network.hpp"
 
 #include <cmath>
 #include <random>

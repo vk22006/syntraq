@@ -13,13 +13,13 @@
 //   - Fixed-time signal controller as baseline
 //
 
-#include "syntraq/core/config.h"
-#include "syntraq/signals/traffic_signal_controller.h"
-#include "syntraq/simulation/simulation.h"
-#include "syntraq/vehicles/vehicle.h"
-#include "syntraq/vehicles/vehicle_movement_system.h"
-#include "syntraq/vehicles/vehicle_spawner.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/core/config.hpp"
+#include "syntraq/signals/traffic_signal_controller.hpp"
+#include "syntraq/simulation/simulation.hpp"
+#include "syntraq/vehicles/vehicle.hpp"
+#include "syntraq/vehicles/vehicle_movement_system.hpp"
+#include "syntraq/vehicles/vehicle_spawner.hpp"
+#include "syntraq/world/road_network.hpp"
 
 #include <gtest/gtest.h>
 #include <cmath>

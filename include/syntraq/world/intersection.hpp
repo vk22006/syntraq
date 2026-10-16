@@ -11,7 +11,7 @@
 //   - Lists of outgoing and incoming road IDs (maintained by RoadNetwork).
 //
 
-#include "syntraq/world/ids.h"
+#include "syntraq/world/ids.hpp"
 #include <string>
 #include <vector>
 

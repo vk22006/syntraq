@@ -7,7 +7,7 @@
 // will be wired in a future milestone when it's actually needed.
 //
 
-#include "syntraq/core/config.h"
+#include "syntraq/core/config.hpp"
 
 #include <fstream>
 #include <iostream>

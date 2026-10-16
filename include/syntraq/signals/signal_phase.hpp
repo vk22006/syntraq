@@ -8,7 +8,7 @@
 // and the set of incoming roads that receive right-of-way during this phase.
 //
 
-#include "syntraq/world/ids.h"
+#include "syntraq/world/ids.hpp"
 
 #include <algorithm>
 #include <string>

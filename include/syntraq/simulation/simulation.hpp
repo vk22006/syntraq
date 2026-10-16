@@ -8,13 +8,13 @@
 // This makes it independently testable.
 //
 
-#include "syntraq/core/config.h"
-#include "syntraq/signals/traffic_signal_controller.h"
-#include "syntraq/world/road_network.h"
-#include "syntraq/vehicles/vehicle.h"
-#include "syntraq/metrics/traffic_metrics.h"
-#include "syntraq/vehicles/vehicle_movement_system.h"
-#include "syntraq/vehicles/vehicle_spawner.h"
+#include "syntraq/core/config.hpp"
+#include "syntraq/signals/traffic_signal_controller.hpp"
+#include "syntraq/world/road_network.hpp"
+#include "syntraq/vehicles/vehicle.hpp"
+#include "syntraq/metrics/traffic_metrics.hpp"
+#include "syntraq/vehicles/vehicle_movement_system.hpp"
+#include "syntraq/vehicles/vehicle_spawner.hpp"
 
 #include <cstdint>
 #include <unordered_map>

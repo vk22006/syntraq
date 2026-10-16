@@ -7,7 +7,7 @@
 // Supports three signal states: Red, Yellow, Green.
 //
 
-#include "syntraq/world/ids.h"
+#include "syntraq/world/ids.hpp"
 #include <string_view>
 
 namespace syntraq {

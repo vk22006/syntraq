@@ -2,7 +2,7 @@
 // src/routing/dijkstra_router.cpp
 //
 
-#include "syntraq/routing/dijkstra_router.h"
+#include "syntraq/routing/dijkstra_router.hpp"
 
 #include <algorithm>
 #include <queue>

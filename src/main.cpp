@@ -6,9 +6,9 @@
 // run the fixed-timestep simulation + rendering loop, and clean up.
 //
 
-#include "syntraq/core/config.h"
-#include "syntraq/simulation/simulation.h"
-#include "syntraq/rendering/renderer.h"
+#include "syntraq/core/config.hpp"
+#include "syntraq/simulation/simulation.hpp"
+#include "syntraq/rendering/renderer.hpp"
 
 #include <iostream>
 #include <string>

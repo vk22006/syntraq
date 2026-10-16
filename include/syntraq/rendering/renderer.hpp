@@ -11,10 +11,10 @@
 // transitively. The renderer is always compiled as a separate translation unit.
 //
 
-#include "syntraq/core/config.h"
-#include "syntraq/simulation/simulation.h"
-#include "syntraq/world/road_network.h"
-#include "syntraq/vehicles/vehicle.h"
+#include "syntraq/core/config.hpp"
+#include "syntraq/simulation/simulation.hpp"
+#include "syntraq/world/road_network.hpp"
+#include "syntraq/vehicles/vehicle.hpp"
 
 #include <memory>
 #include <optional>

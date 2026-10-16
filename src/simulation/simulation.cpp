@@ -2,8 +2,8 @@
 // src/simulation/simulation.cpp
 //
 
-#include "syntraq/simulation/simulation.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/simulation/simulation.hpp"
+#include "syntraq/world/road_network.hpp"
 
 #include <algorithm>
 #include <map>

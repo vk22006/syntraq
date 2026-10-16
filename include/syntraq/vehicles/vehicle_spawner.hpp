@@ -7,9 +7,9 @@
 // Uses an IRouteProvider (default: GreedyRouteProvider) to generate routes.
 //
 
-#include "syntraq/vehicles/route_provider.h"
-#include "syntraq/vehicles/vehicle.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/vehicles/route_provider.hpp"
+#include "syntraq/vehicles/vehicle.hpp"
+#include "syntraq/world/road_network.hpp"
 
 #include <memory>
 #include <optional>

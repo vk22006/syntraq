@@ -7,7 +7,7 @@
 // Supports arbitrary non-negative road cost functions (default: distance in metres).
 //
 
-#include "syntraq/routing/router.h"
+#include "syntraq/routing/router.hpp"
 
 namespace syntraq {
 

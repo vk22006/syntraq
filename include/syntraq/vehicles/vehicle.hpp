@@ -16,7 +16,7 @@
 //   - VehicleState is a separate enum for readability in logs and tests.
 //
 
-#include "syntraq/world/ids.h"
+#include "syntraq/world/ids.hpp"
 #include <cstdint>
 #include <vector>
 

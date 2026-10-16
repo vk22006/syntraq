@@ -6,7 +6,7 @@
 // Synthetic graph generation utilities for benchmarking and scaling tests.
 //
 
-#include "syntraq/world/road_network.h"
+#include "syntraq/world/road_network.hpp"
 
 namespace syntraq {
 

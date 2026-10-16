@@ -8,10 +8,10 @@
 // by VehicleSpawner, Vehicle, and Simulation without modification.
 //
 
-#include "syntraq/routing/route_cost.h"
-#include "syntraq/vehicles/route_provider.h"
-#include "syntraq/world/ids.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/routing/route_cost.hpp"
+#include "syntraq/vehicles/route_provider.hpp"
+#include "syntraq/world/ids.hpp"
+#include "syntraq/world/road_network.hpp"
 
 #include <cstdint>
 #include <string_view>

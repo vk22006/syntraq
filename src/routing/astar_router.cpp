@@ -2,7 +2,7 @@
 // src/routing/astar_router.cpp
 //
 
-#include "syntraq/routing/astar_router.h"
+#include "syntraq/routing/astar_router.hpp"
 
 #include <algorithm>
 #include <queue>

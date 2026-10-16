@@ -4,7 +4,7 @@
 // Implementation of traffic metrics collection, aggregation, and CSV export.
 //
 
-#include "syntraq/metrics/traffic_metrics.h"
+#include "syntraq/metrics/traffic_metrics.hpp"
 
 #include <algorithm>
 #include <fstream>

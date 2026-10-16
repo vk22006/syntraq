@@ -14,7 +14,7 @@
 //     simulation arithmetic stays clean.
 //
 
-#include "syntraq/world/ids.h"
+#include "syntraq/world/ids.hpp"
 #include <string>
 #include <vector>
 
