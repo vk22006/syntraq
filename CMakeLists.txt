@@ -135,6 +135,7 @@ add_library(syntraq_core STATIC
     src/routing/astar_router.cpp
     src/routing/graph_generator.cpp
     src/metrics/traffic_metrics.cpp
+    src/metrics/traffic_data_collector.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
@@ -196,6 +197,16 @@ target_compile_options(syntraq_benchmarks PRIVATE
 add_executable(syntraq_experiments experiments/run_experiments.cpp)
 target_link_libraries(syntraq_experiments PRIVATE syntraq_core)
 target_compile_options(syntraq_experiments PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
+# ---------------------------------------------------------------------------
+# Dataset Generator
+# ---------------------------------------------------------------------------
+add_executable(syntraq_generate_dataset experiments/generate_dataset.cpp)
+target_link_libraries(syntraq_generate_dataset PRIVATE syntraq_core)
+target_compile_options(syntraq_generate_dataset PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
