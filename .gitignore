@@ -5,8 +5,11 @@ build-*/
 out/
 .cache/
 
-# Runtime output (generated metrics, logs)
-data/
+# Runtime output (generated metrics, logs, processed datasets)
+data/*
+!data/dataset/
+data/dataset/*
+!data/dataset/inference_validation_samples.json
 *.csv
 *.log
 
@@ -44,3 +47,4 @@ desktop.ini
 
 # Miscallaneous
 .sf/
+external/
