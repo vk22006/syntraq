@@ -15,9 +15,9 @@
 // Those add in future milestones.
 //
 
-#include "syntraq/signals/traffic_signal_controller.h"
-#include "syntraq/vehicles/vehicle.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/signals/traffic_signal_controller.hpp"
+#include "syntraq/vehicles/vehicle.hpp"
+#include "syntraq/world/road_network.hpp"
 #include <unordered_map>
 #include <vector>
 

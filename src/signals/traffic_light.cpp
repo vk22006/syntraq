@@ -2,7 +2,7 @@
 // src/signals/traffic_light.cpp
 //
 
-#include "syntraq/signals/traffic_light.h"
+#include "syntraq/signals/traffic_light.hpp"
 
 namespace syntraq {
 

@@ -2,8 +2,8 @@
 // src/vehicles/vehicle_spawner.cpp
 //
 
-#include "syntraq/vehicles/vehicle_spawner.h"
-#include "syntraq/routing/astar_router.h"
+#include "syntraq/vehicles/vehicle_spawner.hpp"
+#include "syntraq/routing/astar_router.hpp"
 
 #include <algorithm>
 

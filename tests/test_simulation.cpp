@@ -5,8 +5,8 @@
 // These run headlessly — no window, no Raylib, no rendering.
 //
 
-#include "syntraq/simulation/simulation.h"
-#include "syntraq/core/config.h"
+#include "syntraq/simulation/simulation.hpp"
+#include "syntraq/core/config.hpp"
 #include <gtest/gtest.h>
 #include <cmath>
 

@@ -2,7 +2,7 @@
 // src/world/road_network.cpp
 //
 
-#include "syntraq/world/road_network.h"
+#include "syntraq/world/road_network.hpp"
 
 #include <format>
 #include <stdexcept>

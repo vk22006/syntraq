@@ -8,9 +8,9 @@
 // minimum, and maximum statistics across runs.
 //
 
-#include "syntraq/core/config.h"
-#include "syntraq/metrics/traffic_metrics.h"
-#include "syntraq/simulation/simulation.h"
+#include "syntraq/core/config.hpp"
+#include "syntraq/metrics/traffic_metrics.hpp"
+#include "syntraq/simulation/simulation.hpp"
 
 #include <algorithm>
 #include <cmath>

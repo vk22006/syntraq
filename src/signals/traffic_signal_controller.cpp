@@ -2,8 +2,8 @@
 // src/signals/traffic_signal_controller.cpp
 //
 
-#include "syntraq/signals/traffic_signal_controller.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/signals/traffic_signal_controller.hpp"
+#include "syntraq/world/road_network.hpp"
 
 #include <algorithm>
 #include <cmath>

@@ -1,11 +1,11 @@
 #include <gtest/gtest.h>
 
-#include "syntraq/signals/signal_phase.h"
-#include "syntraq/signals/traffic_light.h"
-#include "syntraq/signals/traffic_signal_controller.h"
-#include "syntraq/simulation/simulation.h"
-#include "syntraq/vehicles/vehicle_movement_system.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/signals/signal_phase.hpp"
+#include "syntraq/signals/traffic_light.hpp"
+#include "syntraq/signals/traffic_signal_controller.hpp"
+#include "syntraq/simulation/simulation.hpp"
+#include "syntraq/vehicles/vehicle_movement_system.hpp"
+#include "syntraq/world/road_network.hpp"
 
 #include <cmath>
 

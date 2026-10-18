@@ -4,7 +4,7 @@
 // Verify the Config struct and Config::from_file() behave correctly.
 //
 
-#include "syntraq/core/config.h"
+#include "syntraq/core/config.hpp"
 #include <gtest/gtest.h>
 
 namespace syntraq {

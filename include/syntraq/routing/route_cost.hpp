@@ -7,7 +7,7 @@
 // Allows routing algorithms to support distance, travel time, or custom weights.
 //
 
-#include "syntraq/world/road.h"
+#include "syntraq/world/road.hpp"
 #include <functional>
 
 namespace syntraq {

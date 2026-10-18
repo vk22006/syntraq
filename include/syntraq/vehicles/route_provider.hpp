@@ -9,8 +9,8 @@
 // the vehicle or spawner core logic.
 //
 
-#include "syntraq/world/ids.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/world/ids.hpp"
+#include "syntraq/world/road_network.hpp"
 
 #include <memory>
 #include <vector>

@@ -8,13 +8,14 @@
 // This makes it independently testable.
 //
 
-#include "syntraq/core/config.h"
-#include "syntraq/signals/traffic_signal_controller.h"
-#include "syntraq/world/road_network.h"
-#include "syntraq/vehicles/vehicle.h"
-#include "syntraq/metrics/traffic_metrics.h"
-#include "syntraq/vehicles/vehicle_movement_system.h"
-#include "syntraq/vehicles/vehicle_spawner.h"
+#include "syntraq/core/config.hpp"
+#include "syntraq/signals/traffic_signal_controller.hpp"
+#include "syntraq/world/road_network.hpp"
+#include "syntraq/vehicles/vehicle.hpp"
+#include "syntraq/metrics/traffic_metrics.hpp"
+#include "syntraq/metrics/traffic_data_collector.hpp"
+#include "syntraq/vehicles/vehicle_movement_system.hpp"
+#include "syntraq/vehicles/vehicle_spawner.hpp"
 
 #include <cstdint>
 #include <unordered_map>
@@ -104,6 +105,19 @@ public:
         return metrics_collector_.export_timeseries_csv(filepath);
     }
 
+    // ── Training Data Collection Subsystem ────────────────────────────────
+    void enable_data_collection(bool enable, float sample_interval_s = 1.0f);
+    void set_run_id(std::string id);
+    [[nodiscard]] const std::string& run_id() const noexcept { return run_id_; }
+    [[nodiscard]] bool is_data_collection_enabled() const noexcept { return data_collection_enabled_; }
+    [[nodiscard]] const TrafficDataCollector& data_collector() const noexcept { return data_collector_; }
+    [[nodiscard]]       TrafficDataCollector& data_collector()       noexcept { return data_collector_; }
+    [[nodiscard]] bool export_training_data_csv(const std::string& filepath,
+                                                bool               append = false,
+                                                bool               require_30s = true) const {
+        return data_collector_.export_csv(filepath, append, require_30s);
+    }
+
     // ── Read-only accessors ───────────────────────────────────────────────
     [[nodiscard]] const SimState&     state()    const noexcept { return state_; }
     [[nodiscard]] const Config&       config()   const noexcept { return cfg_; }
@@ -124,6 +138,9 @@ private:
     VehicleMovementSystem movement_system_;
     VehicleSpawner        spawner_;
     TrafficMetricsCollector metrics_collector_;
+    TrafficDataCollector  data_collector_;
+    std::string           run_id_{ "run_001" };
+    bool                  data_collection_enabled_{ false };
     float                 accumulator_{ 0.0f };
     float                 time_scale_ { 1.0f };
 };

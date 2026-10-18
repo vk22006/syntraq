@@ -9,9 +9,9 @@
 // Provides RunResult summary, time-series logging, and CSV export.
 //
 
-#include "syntraq/core/config.h"
-#include "syntraq/vehicles/vehicle.h"
-#include "syntraq/world/road_network.h"
+#include "syntraq/core/config.hpp"
+#include "syntraq/vehicles/vehicle.hpp"
+#include "syntraq/world/road_network.hpp"
 
 #include <cstdint>
 #include <string>

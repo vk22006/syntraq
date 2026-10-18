@@ -5,7 +5,7 @@
 // All Raylib and ImGui includes are confined to this translation unit.
 //
 
-#include "syntraq/rendering/renderer.h"
+#include "syntraq/rendering/renderer.hpp"
 
 // Third-party headers — isolated to this .cpp
 #include "raylib.h"

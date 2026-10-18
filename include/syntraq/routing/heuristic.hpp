@@ -7,7 +7,7 @@
 // Provides Euclidean distance (default), Manhattan distance, and zero heuristic.
 //
 
-#include "syntraq/world/road_network.h"
+#include "syntraq/world/road_network.hpp"
 #include <cmath>
 #include <functional>
 

@@ -8,8 +8,8 @@
 // (default: Euclidean distance heuristic).
 //
 
-#include "syntraq/routing/heuristic.h"
-#include "syntraq/routing/router.h"
+#include "syntraq/routing/heuristic.hpp"
+#include "syntraq/routing/router.hpp"
 
 namespace syntraq {
 

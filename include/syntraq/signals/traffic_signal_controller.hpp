@@ -12,9 +12,9 @@
 // Maintains signal states (Red, Yellow, Green) for all incoming approach roads.
 //
 
-#include "syntraq/signals/signal_phase.h"
-#include "syntraq/signals/traffic_light.h"
-#include "syntraq/world/ids.h"
+#include "syntraq/signals/signal_phase.hpp"
+#include "syntraq/signals/traffic_light.hpp"
+#include "syntraq/world/ids.hpp"
 
 #include <cstdint>
 #include <string>

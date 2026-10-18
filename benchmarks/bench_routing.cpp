@@ -5,9 +5,9 @@
 // Measures runtime (microseconds), nodes expanded, and validates 100% path optimality.
 //
 
-#include "syntraq/routing/astar_router.h"
-#include "syntraq/routing/dijkstra_router.h"
-#include "syntraq/routing/graph_generator.h"
+#include "syntraq/routing/astar_router.hpp"
+#include "syntraq/routing/dijkstra_router.hpp"
+#include "syntraq/routing/graph_generator.hpp"
 
 #include <chrono>
 #include <cmath>

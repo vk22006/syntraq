@@ -2,7 +2,7 @@
 // src/routing/graph_generator.cpp
 //
 
-#include "syntraq/routing/graph_generator.h"
+#include "syntraq/routing/graph_generator.hpp"
 
 #include <string>
 #include <vector>

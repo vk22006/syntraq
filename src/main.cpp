@@ -6,9 +6,9 @@
 // run the fixed-timestep simulation + rendering loop, and clean up.
 //
 
-#include "syntraq/core/config.h"
-#include "syntraq/simulation/simulation.h"
-#include "syntraq/rendering/renderer.h"
+#include "syntraq/core/config.hpp"
+#include "syntraq/simulation/simulation.hpp"
+#include "syntraq/rendering/renderer.hpp"
 
 #include <iostream>
 #include <string>
@@ -19,6 +19,7 @@ int main(int argc, char* argv[]) {
     std::string screenshot_path;
     std::string csv_summary_path;
     std::string csv_timeseries_path;
+    std::string csv_training_data_path;
     bool cli_headless = false;
     bool enable_debug_overlays = false;
     int  cli_width  = 0;
@@ -58,6 +59,8 @@ int main(int argc, char* argv[]) {
             csv_summary_path = argv[++i];
         } else if (arg == "--csv-timeseries" && i + 1 < argc) {
             csv_timeseries_path = argv[++i];
+        } else if ((arg == "--training-data" || arg == "--export-training-data") && i + 1 < argc) {
+            csv_training_data_path = argv[++i];
         } else if (arg.rfind(".json") != std::string::npos) {
             cfgPath = arg;
         }
@@ -86,6 +89,9 @@ int main(int argc, char* argv[]) {
     // ── Headless mode ────────────────────────────────────────────────────
     if (cfg.headless) {
         syntraq::Simulation sim{ cfg };
+        if (!csv_training_data_path.empty()) {
+            sim.enable_data_collection(true, 1.0f);
+        }
         sim.run_for(cfg.sim_duration_s);
         const auto res = sim.get_run_result();
 
@@ -120,6 +126,15 @@ int main(int argc, char* argv[]) {
                 std::cout << "[SyntraQ] Time-series metrics exported to: " << csv_timeseries_path << "\n";
             } else {
                 std::cerr << "[SyntraQ] Failed to export time-series CSV to: " << csv_timeseries_path << "\n";
+            }
+        }
+
+        if (!csv_training_data_path.empty()) {
+            sim.data_collector().finalize();
+            if (sim.export_training_data_csv(csv_training_data_path)) {
+                std::cout << "[SyntraQ] Training dataset exported to: " << csv_training_data_path << "\n";
+            } else {
+                std::cerr << "[SyntraQ] Failed to export training data to: " << csv_training_data_path << "\n";
             }
         }
 
