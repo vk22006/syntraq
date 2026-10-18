@@ -22,7 +22,8 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Experiments & Batch Pipeline | Headless execution, multi-seed evaluation, automated statistical aggregation, CSV exports | ✅ Complete |
 | Analysis & Visualization | Automated Python pipeline producing Pandas summaries and Matplotlib comparative charts | ✅ Complete |
 | Data Generation & Preprocessing | Structured 26-feature dataset extraction, dual-horizon lookahead targets, leakage-free splitting | ✅ Complete |
-| Traffic Prediction Models | Baseline & ensemble models (Linear, Ridge, RF, GBDT) with R²=0.88, sub-millisecond inference | ✅ Complete |
+| Classical Prediction Models | Baseline & ensemble models (Linear, Ridge, RF, GBDT) with R²=0.88, sub-millisecond inference | ✅ Complete |
+| PyTorch Neural Predictor | 3-layer MLP, PyTorch DataLoader & training loop, checkpointing, R²=0.89 | ✅ Complete |
 | Adaptive & AI Signal Optimization | Reinforcement Learning & Neural Network adaptive traffic signal controllers | ⏳ Planned |
 
 ---
@@ -38,8 +39,8 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Tests          | GoogleTest + CTest (131 tests) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
+| Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
 | AI deployment  | ONNX Runtime (future)          |
-| AI training    | Python / PyTorch (future)      |
 
 ---
 
@@ -167,29 +168,44 @@ Generated dataset artifacts:
 
 ---
 
-## Machine Learning Traffic Prediction
+## Machine Learning & Neural Traffic Prediction
 
-SyntraQ includes baseline and ensemble regression models to predict future queue lengths and congestion:
+SyntraQ provides both classical regression baselines and a PyTorch neural network to predict future queue lengths and congestion from 26 state telemetry features:
 
 ```powershell
-# Train and benchmark baseline and ensemble models (Linear, Ridge, Random Forest, Gradient Boosting)
+# 1. Train and benchmark classical models (Linear Regression, Ridge, Random Forest, Gradient Boosting)
 python scripts/train_prediction_model.py --target target_queue_15s --seed 42
+
+# 2. Train and evaluate PyTorch TrafficMLP neural network (with DataLoader, checkpointing, and scheduler)
+python scripts/train_pytorch_mlp.py --epochs 120 --batch-size 32 --lr 0.003
 ```
 
-### Model Benchmark Results (15s Horizon Future Queue Length)
+### Model Architecture (PyTorch TrafficMLP)
 
-| Model Architecture | Val MAE | Val RMSE | Val R² | Test MAE | Test RMSE | Test R² | Max Error | Inference Latency |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Dummy (Mean)** | 6.40 veh | 8.91 veh | -0.0004 | 5.94 veh | 7.80 veh | -0.0024 | 35.73 veh | 0.02 μs |
-| **Linear Regression** | 2.90 veh | 3.85 veh | 0.8135 | 2.92 veh | 3.83 veh | 0.7585 | 13.46 veh | 0.21 μs |
-| **Ridge Regression** | 2.90 veh | 3.85 veh | 0.8131 | 2.91 veh | 3.81 veh | 0.7612 | 12.93 veh | 0.11 μs |
-| **Random Forest** | 2.26 veh | 3.46 veh | 0.8494 | 2.15 veh | 3.09 veh | 0.8431 | 12.77 veh | 34.96 μs |
-| **Gradient Boosting (Best)** | **2.09 veh** | **3.07 veh** | **0.8812** | **1.90 veh** | **2.72 veh** | **0.8779** | **10.80 veh** | **2.71 μs** |
+```
+Input (26 features) --> Dense (64) --> ReLU --> Dense (32) --> ReLU --> Output (1 scalar)
+```
+- Total trainable parameters: **3,841**
+- Checkpoint size: **20.3 KB** (30x smaller than tree ensemble bundles)
 
-- **Winning Model Bundle**: `models/best_traffic_predictor.joblib`
-- **Evaluation Metrics JSON**: `models/evaluation_metrics.json`
-- **Diagnostic Charts**: `data/experiments/charts/prediction_vs_actual.png`
-- **Full Report & Justification**: [docs/model_evaluation_report.md](docs/model_evaluation_report.md)
+### Comprehensive Model Benchmark Results (+15s Future Queue Length)
+
+| Model Architecture | Type | Val MAE | Val RMSE | Val R^2 | Test MAE | Test RMSE | Test R^2 | Max Error | Inference Latency |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Dummy (Mean)** | Baseline | 6.40 veh | 8.91 veh | -0.0004 | 5.94 veh | 7.80 veh | -0.0024 | 35.73 veh | 0.03 us |
+| **Linear Regression** | Classical | 2.90 veh | 3.85 veh | 0.8135 | 2.92 veh | 3.83 veh | 0.7585 | 13.46 veh | 0.21 us |
+| **Ridge Regression** | Classical | 2.90 veh | 3.85 veh | 0.8131 | 2.91 veh | 3.81 veh | 0.7612 | 12.93 veh | 0.11 us |
+| **Random Forest** | Classical | 2.26 veh | 3.46 veh | 0.8494 | 2.15 veh | 3.09 veh | 0.8431 | 12.77 veh | 33.65 us |
+| **Gradient Boosting** | Classical | 2.09 veh | 3.07 veh | 0.8812 | 1.90 veh | 2.72 veh | 0.8779 | 10.80 veh | 1.91 us |
+| **PyTorch TrafficMLP (Best)** | **Neural Net** | **1.79 veh** | **2.40 veh** | **0.9272** | **1.75 veh** | **2.56 veh** | **0.8919** | **9.94 veh** | **2.45 us** |
+
+### Artifacts & Reports
+- **PyTorch Model Checkpoint**: `models/best_traffic_mlp.pt`
+- **PyTorch Metrics JSON**: `models/mlp_evaluation_metrics.json`
+- **Classical Model Bundle**: `models/best_traffic_predictor.joblib`
+- **Classical Metrics JSON**: `models/evaluation_metrics.json`
+- **Visual Diagnostics**: [docs/mlp_training_and_evaluation.png](docs/mlp_training_and_evaluation.png)
+- **Detailed Evaluation & Trade-off Analysis**: [docs/mlp_evaluation_report.md](docs/mlp_evaluation_report.md)
 
 ---
 
