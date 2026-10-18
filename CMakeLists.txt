@@ -120,6 +120,57 @@ target_compile_options(rlimgui PRIVATE
 )
 
 # ---------------------------------------------------------------------------
+# ONNX Runtime — Native AI Inference Engine (cross-platform)
+# ---------------------------------------------------------------------------
+set(ONNXRUNTIME_DIR "${CMAKE_SOURCE_DIR}/external/onnxruntime"
+    CACHE PATH "Path to the pre-built ONNX Runtime SDK")
+
+if(NOT EXISTS "${ONNXRUNTIME_DIR}/include/onnxruntime_cxx_api.h")
+    message(STATUS "ONNX Runtime SDK not found locally at ${ONNXRUNTIME_DIR}. Fetching prebuilt release binaries...")
+    if(WIN32)
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+            set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-arm64-1.31.0.zip")
+        else()
+            set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-x64-1.31.0.zip")
+        endif()
+    elseif(APPLE)
+        set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-osx-arm64-1.31.0.tgz")
+    else()
+        set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-linux-x64-1.31.0.tgz")
+    endif()
+
+    include(FetchContent)
+    FetchContent_Declare(
+        onnxruntime_sdk
+        URL ${ORT_URL}
+    )
+    FetchContent_MakeAvailable(onnxruntime_sdk)
+    set(ONNXRUNTIME_DIR "${onnxruntime_sdk_SOURCE_DIR}")
+endif()
+
+if(WIN32)
+    add_library(onnxruntime SHARED IMPORTED GLOBAL)
+    set_target_properties(onnxruntime PROPERTIES
+        IMPORTED_IMPLIB   "${ONNXRUNTIME_DIR}/lib/onnxruntime.lib"
+        IMPORTED_LOCATION "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
+        INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_DIR}/include"
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${ONNXRUNTIME_DIR}/include"
+    )
+    if(EXISTS "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
+        file(COPY "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll" DESTINATION "${CMAKE_BINARY_DIR}/bin")
+    endif()
+else()
+    file(GLOB ORT_SO_FILES "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so*")
+    add_library(onnxruntime SHARED IMPORTED GLOBAL)
+    set_target_properties(onnxruntime PROPERTIES
+        IMPORTED_LOCATION "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so"
+        INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_DIR}/include"
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${ONNXRUNTIME_DIR}/include"
+    )
+    target_link_libraries(onnxruntime INTERFACE pthread dl)
+endif()
+
+# ---------------------------------------------------------------------------
 # syntraq_core — headless simulation library (no main, fully testable)
 # ---------------------------------------------------------------------------
 add_library(syntraq_core STATIC
@@ -136,10 +187,13 @@ add_library(syntraq_core STATIC
     src/routing/graph_generator.cpp
     src/metrics/traffic_metrics.cpp
     src/metrics/traffic_data_collector.cpp
+    src/ai/traffic_feature_scaler.cpp
+    src/ai/traffic_predictor.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
 )
+target_link_libraries(syntraq_core PUBLIC onnxruntime)
 # Warning flags for our own code
 target_compile_options(syntraq_core PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
@@ -178,6 +232,15 @@ if(WIN32 AND EXISTS "${RAYLIB_SDK_DIR}/lib/raylib.dll")
             "${RAYLIB_SDK_DIR}/lib/raylib.dll"
             "$<TARGET_FILE_DIR:syntraq>/raylib.dll"
         COMMENT "Copying raylib.dll to output directory"
+    )
+endif()
+
+if(WIN32 AND EXISTS "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
+    add_custom_command(TARGET syntraq POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
+            "$<TARGET_FILE_DIR:syntraq>/onnxruntime.dll"
+        COMMENT "Copying onnxruntime.dll to output directory"
     )
 endif()
 
