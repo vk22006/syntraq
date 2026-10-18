@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-10-18 12:38:40",
+  "model": "PyTorch TrafficMLP",
+  "target": "target_queue_15s",
+  "architecture": {
+    "in_features": 26,
+    "hidden1": 64,
+    "hidden2": 32,
+    "out_features": 1,
+    "parameter_count": 3841
+  },
+  "hyperparameters": {
+    "epochs": 120,
+    "batch_size": 32,
+    "lr": 0.003,
+    "weight_decay": 0.0001,
+    "seed": 42,
+    "best_epoch": 15,
+    "train_duration_s": 5.947458300041035
+  },
+  "metrics": {
+    "train": {
+      "mae": 1.512623906135559,
+      "rmse": 2.1225040587621193,
+      "r2": 0.9379680156707764,
+      "max_error": 9.322265625
+    },
+    "val": {
+      "mae": 1.7895214557647705,
+      "rmse": 2.4046892330964047,
+      "r2": 0.927205502986908,
+      "max_error": 9.752708435058594
+    },
+    "test": {
+      "mae": 1.7501943111419678,
+      "rmse": 2.5631859024205466,
+      "r2": 0.8918509483337402,
+      "max_error": 9.569477081298828
+    }
+  },
+  "latency_us_per_sample": 2.4511111162913344,
+  "checkpoint_size_kb": 20.2509765625
+}
