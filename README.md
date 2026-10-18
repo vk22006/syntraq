@@ -24,6 +24,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Data Generation & Preprocessing | Structured 26-feature dataset extraction, dual-horizon lookahead targets, leakage-free splitting | ✅ Complete |
 | Classical Prediction Models | Baseline & ensemble models (Linear, Ridge, RF, GBDT) with R²=0.88, sub-millisecond inference | ✅ Complete |
 | PyTorch Neural Predictor | 3-layer MLP, PyTorch DataLoader & training loop, checkpointing, R²=0.89 | ✅ Complete |
+| Native AI Inference Engine | ONNX Runtime C++ API, feature scaler parity, async inference, latency telemetry | ✅ Complete |
 | Adaptive & AI Signal Optimization | Reinforcement Learning & Neural Network adaptive traffic signal controllers | ⏳ Planned |
 
 ---
@@ -36,11 +37,11 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (131 tests) |
+| Tests          | GoogleTest + CTest (139 tests) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
-| AI deployment  | ONNX Runtime (future)          |
+| AI Inference   | ONNX Runtime C/C++ API         |
 
 ---
 
@@ -139,6 +140,7 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+.\build\bin\test_traffic_predictor.exe
 .\build\bin\test_data_generation.exe
 .\build\bin\test_traffic_behavior.exe
 .\build\bin\test_metrics.exe
@@ -209,6 +211,32 @@ Input (26 features) --> Dense (64) --> ReLU --> Dense (32) --> ReLU --> Output (
 
 ---
 
+## Native AI Inference Engine (ONNX Runtime)
+
+SyntraQ integrates the **ONNX Runtime C/C++ API** for low-latency, real-time neural inference inside the simulation engine without Python dependencies:
+
+```powershell
+# 1. Export trained PyTorch TrafficMLP to optimized ONNX graph (Opset 17)
+python scripts/export_onnx_model.py
+
+# 2. Run automated C++ inference parity and latency tests
+.\build\bin\test_traffic_predictor.exe
+```
+
+### Architecture & Preprocessing Parity
+- **Zero-Copy Continuous Scaling**: C++ `TrafficFeatureScaler` mirrors the Python training pipeline, standardizing 22 continuous features using precomputed dataset mean/std statistics.
+- **Categorical One-Hot Encoding**: Encodes the 4 simulation scenario regimes (`Low Traffic`, `Medium Traffic`, `High Traffic`, `Rush Hour`) into indices [22:25] matching Python's `OneHotEncoder`.
+- **C++ Inference Interface (`TrafficPredictor`)**:
+  - `loadModel(const std::string& model_path)`: Thread-safe ONNX model initialization with graceful error handling (no crashing on missing/corrupt models).
+  - `predict(const std::vector<float>& features)`: Synchronous native tensor evaluation returning future queue length.
+  - `predictSample(const TrafficDataSample& sample)`: High-level helper combining extraction, scaling, and inference.
+  - `predictAsync(const std::vector<float>& features)`: Non-blocking asynchronous inference returning `std::future<float>` so the rendering/simulation loop is never stalled.
+  - `isLoaded()`: Read-only model readiness indicator.
+  - Telemetry: `getLastInferenceLatencyUs()`, `getAverageInferenceLatencyUs()`, and `getInferenceCount()` for microsecond profiling.
+- **Python-to-C++ Parity Validation**: Verified across reference test vectors with maximum numerical discrepancy **$< 10^{-5}$** (well within test tolerance of $10^{-3}$).
+
+---
+
 ## Project Structure
 
 ```
@@ -220,6 +248,7 @@ SyntraQ/
 │   ├── signals/       # Traffic signals (Phases, Controllers) (.hpp)
 │   ├── routing/       # Routing engine (Dijkstra, A*, Heuristics, Costs) (.hpp)
 │   ├── metrics/       # Telemetry & ML dataset collectors (.hpp)
+│   ├── ai/            # ONNX Runtime predictor & feature scaler (.hpp)
 │   ├── simulation/    # Headless simulation loop & state (.hpp)
 │   └── rendering/     # Raylib + ImGui renderer (.hpp)
 ├── src/
@@ -229,17 +258,18 @@ SyntraQ/
 │   ├── signals/       # Traffic signal controllers
 │   ├── routing/       # Dijkstra, A*, and graph generator
 │   ├── metrics/       # Telemetry collector, ML data generator, CSV exporters
+│   ├── ai/            # TrafficPredictor & TrafficFeatureScaler implementation
 │   ├── simulation/    # Simulation loop & scenario management
 │   ├── rendering/     # Renderer and three-panel UI layout
 │   └── main.cpp       # CLI parsing and application entry point
 ├── experiments/       # Baseline experiments and batch dataset generator
-├── scripts/           # Statistical analysis and ML preprocessing pipelines
-├── tests/             # GoogleTest suites (131 tests across all subsystems)
+├── scripts/           # Statistical analysis, ML training, and ONNX export scripts
+├── tests/             # GoogleTest suites (139 tests across all subsystems)
 ├── benchmarks/        # Routing engine benchmarks (Dijkstra vs A*)
 ├── configs/           # Scenario JSON configurations
-├── data/              # Experiment datasets, ML training data, and generated charts
+├── data/              # Experiment datasets, ML training data, and reference validation sets
 ├── assets/            # Fonts, textures (future)
-├── models/            # Trained prediction models (joblib) & evaluation metrics (json)
+├── models/            # Trained PyTorch, classical, and ONNX models (.pt, .joblib, .onnx)
 └── docs/              # Layout screenshots, dataset specifications, and architecture docs
 ```
 
