@@ -181,6 +181,8 @@ add_library(syntraq_core STATIC
     src/vehicles/vehicle_spawner.cpp
     src/vehicles/route_provider.cpp
     src/signals/traffic_light.cpp
+    src/signals/fixed_time_controller.cpp
+    src/signals/adaptive_controller.cpp
     src/signals/traffic_signal_controller.cpp
     src/routing/dijkstra_router.cpp
     src/routing/astar_router.cpp
@@ -260,6 +262,13 @@ target_compile_options(syntraq_benchmarks PRIVATE
 add_executable(syntraq_experiments experiments/run_experiments.cpp)
 target_link_libraries(syntraq_experiments PRIVATE syntraq_core)
 target_compile_options(syntraq_experiments PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
+add_executable(syntraq_compare_controllers experiments/compare_controllers.cpp)
+target_link_libraries(syntraq_compare_controllers PRIVATE syntraq_core)
+target_compile_options(syntraq_compare_controllers PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
