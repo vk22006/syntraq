@@ -27,6 +27,7 @@ int main(int argc, char* argv[]) {
     std::optional<float> cli_duration;
     std::optional<uint32_t> cli_seed;
     std::optional<syntraq::TrafficScenario> cli_scenario;
+    std::optional<syntraq::SignalControllerType> cli_controller;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -61,6 +62,13 @@ int main(int argc, char* argv[]) {
             csv_timeseries_path = argv[++i];
         } else if ((arg == "--training-data" || arg == "--export-training-data") && i + 1 < argc) {
             csv_training_data_path = argv[++i];
+        } else if ((arg == "--controller" || arg == "-c") && i + 1 < argc) {
+            std::string ct = argv[++i];
+            if (ct == "adaptive" || ct == "Adaptive") {
+                cli_controller = syntraq::SignalControllerType::Adaptive;
+            } else if (ct == "fixed" || ct == "Fixed" || ct == "fixedtime" || ct == "FixedTime") {
+                cli_controller = syntraq::SignalControllerType::FixedTime;
+            }
         } else if (arg.rfind(".json") != std::string::npos) {
             cfgPath = arg;
         }
@@ -84,6 +92,9 @@ int main(int argc, char* argv[]) {
     }
     if (cli_scenario.has_value()) {
         cfg.scenario = *cli_scenario;
+    }
+    if (cli_controller.has_value()) {
+        cfg.signal_controller_type = *cli_controller;
     }
 
     // ── Headless mode ────────────────────────────────────────────────────
