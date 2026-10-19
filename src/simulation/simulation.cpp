@@ -41,12 +41,24 @@ void Simulation::init_default_signals() {
     for (const auto& [id, inter] : network_.intersections()) {
         const auto incoming = network_.incoming_roads(id);
         if (incoming.size() > 1) {
-            auto c = TrafficSignalController::make_fixed_time(
-                network_,
-                id,
-                cfg_.default_green_duration_s,
-                cfg_.default_yellow_duration_s,
-                cfg_.default_all_red_duration_s);
+            TrafficSignalController c;
+            if (cfg_.signal_controller_type == SignalControllerType::Adaptive) {
+                AdaptiveControllerConfig ac_cfg;
+                ac_cfg.nominal_green_s = cfg_.default_green_duration_s;
+                c = TrafficSignalController::make_adaptive(
+                    network_,
+                    id,
+                    ac_cfg,
+                    cfg_.default_yellow_duration_s,
+                    cfg_.default_all_red_duration_s);
+            } else {
+                c = TrafficSignalController::make_fixed_time(
+                    network_,
+                    id,
+                    cfg_.default_green_duration_s,
+                    cfg_.default_yellow_duration_s,
+                    cfg_.default_all_red_duration_s);
+            }
             if (c.is_valid()) {
                 signal_controllers_[id] = std::move(c);
             }
@@ -57,8 +69,21 @@ void Simulation::init_default_signals() {
 void Simulation::tick() {
     if (!state_.running) return;
 
-    // ── 1. Advance traffic signal controllers ─────────────────────────────
+    // ── 1. Ingest approach queues & wait times, then advance signal controllers ───
+    std::unordered_map<RoadId, uint32_t> road_queues;
+    std::unordered_map<RoadId, float>    road_max_waits;
+    for (const auto& v : vehicles_) {
+        if (v.state == VehicleState::Arrived) continue;
+        if (v.state == VehicleState::Stopped || v.speed_mps < 0.5f) {
+            road_queues[v.current_road]++;
+            if (v.wait_time_s > road_max_waits[v.current_road]) {
+                road_max_waits[v.current_road] = v.wait_time_s;
+            }
+        }
+    }
+
     for (auto& [id, controller] : signal_controllers_) {
+        controller.observe_traffic(road_queues, road_max_waits);
         controller.tick(cfg_.dt_seconds);
     }
 
@@ -243,6 +268,11 @@ uint32_t Simulation::max_queue_length() const noexcept {
 void Simulation::set_signal_controller(TrafficSignalController controller) {
     const auto id = controller.intersection_id();
     signal_controllers_[id] = std::move(controller);
+}
+
+void Simulation::set_signal_controller_type(SignalControllerType type) {
+    cfg_.signal_controller_type = type;
+    init_default_signals();
 }
 
 const TrafficSignalController* Simulation::signal_controller(IntersectionId id) const noexcept {
