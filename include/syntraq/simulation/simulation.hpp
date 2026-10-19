@@ -79,6 +79,10 @@ public:
 
     // ── Traffic Signals ───────────────────────────────────────────────────
     void set_signal_controller(TrafficSignalController controller);
+    void set_signal_controller_type(SignalControllerType type);
+    [[nodiscard]] SignalControllerType signal_controller_type() const noexcept {
+        return cfg_.signal_controller_type;
+    }
 
     [[nodiscard]] const TrafficSignalController* signal_controller(IntersectionId id) const noexcept;
     [[nodiscard]]       TrafficSignalController* signal_controller(IntersectionId id)       noexcept;
