@@ -768,7 +768,7 @@ void Renderer::draw_simulation_panel(
 
 void Renderer::draw_signal_status(
     const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
-    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC SIGNALS (BASELINE)");
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC SIGNALS");
     ImGui::Separator();
 
     if (!signal_controllers || signal_controllers->empty()) {
@@ -784,11 +784,12 @@ void Renderer::draw_signal_status(
     std::sort(sorted.begin(), sorted.end(),
               [](const auto& a, const auto& b) { return a.first < b.first; });
 
-    if (ImGui::BeginTable("SignalControllersTable", 3, ImGuiTableFlags_SizingFixedFit)) {
+    if (ImGui::BeginTable("SignalControllersTable", 4, ImGuiTableFlags_SizingFixedFit)) {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0); ImGui::Text("Junction");
-        ImGui::TableSetColumnIndex(1); ImGui::Text("Signal State");
-        ImGui::TableSetColumnIndex(2); ImGui::Text("Remaining");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("Mode");
+        ImGui::TableSetColumnIndex(2); ImGui::Text("Signal State");
+        ImGui::TableSetColumnIndex(3); ImGui::Text("Remaining");
 
         for (const auto& [inter_id, controller] : sorted) {
             ImGui::TableNextRow();
@@ -796,6 +797,30 @@ void Renderer::draw_signal_status(
             ImGui::Text("I-%u", static_cast<uint32_t>(inter_id));
 
             ImGui::TableSetColumnIndex(1);
+            if (const auto* ac = controller->as<AdaptiveController>()) {
+                switch (ac->last_decision()) {
+                    case AdaptiveDecision::ExtendGreen:
+                        ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "ADAPT [EXT]");
+                        break;
+                    case AdaptiveDecision::ShortenPhase:
+                        ImGui::TextColored(ImVec4(1.00f, 0.65f, 0.20f, 1.00f), "ADAPT [GAP]");
+                        break;
+                    case AdaptiveDecision::SwitchPhase:
+                        ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.25f, 1.00f), "ADAPT [SWT]");
+                        break;
+                    case AdaptiveDecision::Hold:
+                    default:
+                        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "ADAPTIVE");
+                        break;
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", std::string(ac->last_decision_reason()).c_str());
+                }
+            } else {
+                ImGui::TextDisabled("FixedTime");
+            }
+
+            ImGui::TableSetColumnIndex(2);
             switch (controller->current_stage()) {
                 case PhaseStage::Green:
                     ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "GREEN");
@@ -808,7 +833,7 @@ void Renderer::draw_signal_status(
                     break;
             }
 
-            ImGui::TableSetColumnIndex(2);
+            ImGui::TableSetColumnIndex(3);
             ImGui::Text("%.1f s", controller->stage_remaining_s());
         }
         ImGui::EndTable();
