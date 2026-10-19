@@ -25,7 +25,8 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Classical Prediction Models | Baseline & ensemble models (Linear, Ridge, RF, GBDT) with R²=0.88, sub-millisecond inference | ✅ Complete |
 | PyTorch Neural Predictor | 3-layer MLP, PyTorch DataLoader & training loop, checkpointing, R²=0.89 | ✅ Complete |
 | Native AI Inference Engine | ONNX Runtime C++ API, feature scaler parity, async inference, latency telemetry | ✅ Complete |
-| Adaptive & AI Signal Optimization | Reinforcement Learning & Neural Network adaptive traffic signal controllers | ⏳ Planned |
+| Adaptive Signal Optimization | Deterministic actuated/adaptive traffic signal controller (FixedTime vs. Adaptive) | ✅ Complete |
+| Reinforcement Learning Signals | Deep RL adaptive traffic signal control | ⏳ Planned |
 
 ---
 
@@ -37,7 +38,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (139 tests) |
+| Tests          | GoogleTest + CTest (147 tests) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
@@ -140,6 +141,7 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+.\build\bin\test_adaptive_controller.exe
 .\build\bin\test_traffic_predictor.exe
 .\build\bin\test_data_generation.exe
 .\build\bin\test_traffic_behavior.exe
@@ -237,6 +239,36 @@ python scripts/export_onnx_model.py
 
 ---
 
+## Adaptive Traffic Signal Control
+
+SyntraQ provides both a baseline **Fixed-Time Controller** and a deterministic **Adaptive Controller** sharing a unified `ITrafficSignalController` interface:
+
+```powershell
+# 1. Run headless simulation using adaptive traffic signal controllers
+.\build\bin\syntraq.exe --headless --controller adaptive --duration 120 --scenario high
+
+# 2. Run automated comparative benchmark across all scenarios and seeds
+.\build\bin\syntraq_compare_controllers.exe --duration 120
+
+# 3. Generate comparative charts and performance analysis
+python scripts/analyze_adaptive_comparison.py
+```
+
+### Deterministic & Explainable Policy
+- **Interface Uniformity**: Both `FixedTimeController` and `AdaptiveController` implement `ITrafficSignalController`.
+- **Dynamic Queue-Responsive Decisions**:
+  - `ExtendGreen`: Extends green while queue demand persists ($Q_{\text{current}} > 0$) up to `max_green_s` (30s) as long as opposing approaches have not exceeded starvation thresholds.
+  - `ShortenPhase (Early Gap-Out)`: Cuts green time short once active queues dissipate ($Q_{\text{current}} = 0$) after mandatory `min_green_s` (4s), transitioning directly to yellow clearance to serve waiting opposing queues.
+  - `SwitchPhase`: Triggered by reaching `max_green_s` or when opposing vehicles reach the starvation threshold (`max_wait_threshold_s = 20s`).
+  - `Hold`: Guarantees mandatory driver predictability and minimum green safety times.
+- **Empirical Performance Gains**:
+  - **-14.6% waiting time reduction** and **+15.1% throughput improvement** under Rush Hour traffic.
+  - **-12.5% waiting time reduction** and **+13.7% throughput improvement** under High traffic.
+  - **-14.3% congestion reduction** under High traffic.
+  - Detailed empirical benchmark breakdown documented in [docs/adaptive_controller_benchmark.md](docs/adaptive_controller_benchmark.md).
+
+---
+
 ## Project Structure
 
 ```
@@ -245,7 +277,7 @@ SyntraQ/
 │   ├── core/          # Config and shared types (.hpp)
 │   ├── world/         # Road network graph (Intersections & Roads) (.hpp)
 │   ├── vehicles/      # Vehicle kinematics, car-following, and spawner (.hpp)
-│   ├── signals/       # Traffic signals (Phases, Controllers) (.hpp)
+│   ├── signals/       # Traffic signals (Interface, FixedTime, Adaptive) (.hpp)
 │   ├── routing/       # Routing engine (Dijkstra, A*, Heuristics, Costs) (.hpp)
 │   ├── metrics/       # Telemetry & ML dataset collectors (.hpp)
 │   ├── ai/            # ONNX Runtime predictor & feature scaler (.hpp)
@@ -255,22 +287,22 @@ SyntraQ/
 │   ├── core/          # Config implementation
 │   ├── world/         # Road network implementation
 │   ├── vehicles/      # Kinematics and queue formation systems
-│   ├── signals/       # Traffic signal controllers
+│   ├── signals/       # FixedTimeController, AdaptiveController, TrafficSignalController
 │   ├── routing/       # Dijkstra, A*, and graph generator
 │   ├── metrics/       # Telemetry collector, ML data generator, CSV exporters
 │   ├── ai/            # TrafficPredictor & TrafficFeatureScaler implementation
 │   ├── simulation/    # Simulation loop & scenario management
 │   ├── rendering/     # Renderer and three-panel UI layout
 │   └── main.cpp       # CLI parsing and application entry point
-├── experiments/       # Baseline experiments and batch dataset generator
-├── scripts/           # Statistical analysis, ML training, and ONNX export scripts
-├── tests/             # GoogleTest suites (139 tests across all subsystems)
+├── experiments/       # Baseline experiments, controller comparison, and dataset generator
+├── scripts/           # Statistical analysis, ML training, and controller evaluation scripts
+├── tests/             # GoogleTest suites (147 tests across all subsystems)
 ├── benchmarks/        # Routing engine benchmarks (Dijkstra vs A*)
 ├── configs/           # Scenario JSON configurations
 ├── data/              # Experiment datasets, ML training data, and reference validation sets
 ├── assets/            # Fonts, textures (future)
 ├── models/            # Trained PyTorch, classical, and ONNX models (.pt, .joblib, .onnx)
-└── docs/              # Layout screenshots, dataset specifications, and architecture docs
+└── docs/              # Layout screenshots, dataset specifications, and benchmark docs
 ```
 
 ---
