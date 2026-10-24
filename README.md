@@ -26,7 +26,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | PyTorch Neural Predictor | 3-layer MLP, PyTorch DataLoader & training loop, checkpointing, R²=0.89 | ✅ Complete |
 | Native AI Inference Engine | ONNX Runtime C++ API, feature scaler parity, async inference, latency telemetry | ✅ Complete |
 | Adaptive Signal Optimization | Deterministic actuated/adaptive traffic signal controller (FixedTime vs. Adaptive) | ✅ Complete |
-| Reinforcement Learning Signals | Deep RL adaptive traffic signal control | ⏳ Planned |
+| Reinforcement Learning Environment | Single-intersection MDP, Gymnasium & PyTorch interface, DQN policy | ✅ Complete |
 
 ---
 
@@ -38,7 +38,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (147 tests) |
+| Tests          | GoogleTest + CTest (158 tests) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
@@ -266,6 +266,33 @@ python scripts/analyze_adaptive_comparison.py
   - **-12.5% waiting time reduction** and **+13.7% throughput improvement** under High traffic.
   - **-14.3% congestion reduction** under High traffic.
   - Detailed empirical benchmark breakdown documented in [docs/adaptive_controller_benchmark.md](docs/adaptive_controller_benchmark.md).
+
+---
+
+## Reinforcement Learning Environment (Single-Intersection)
+
+SyntraQ provides a dedicated Gymnasium-compatible Reinforcement Learning (RL) environment for traffic signal control. It interfaces directly with native C++ simulation binaries via an in-memory C-ABI (`syntraq_env_capi`), achieving sub-millisecond step execution speeds without IPC or file I/O overhead.
+
+### Markov Decision Process (MDP) Specifications
+
+- **Observation Space**: `Box(12,)` bounded in `[0.0, 1.0]` capturing normalized queue lengths, approaching moving vehicles, average speeds per approach, active phase index, time in current phase, clearance status, switch legality, and average waiting times.
+- **Action Space**: `Discrete(2)`:
+  - `0` (`MaintainPhase`): Keep active green or continue ongoing clearance stage.
+  - `1` (`SwitchPhase`): Initiate safe transition to next phase (enforcing minimum green time $t_{\text{min\_green}} \ge 4.0\text{s}$, 3.0s yellow clearance, and 2.0s all-red buffer).
+- **Reward Function**: Penalizes queue lengths, waiting times, and network congestion while rewarding completed departures:
+  $$R_t = -\Big( w_q \cdot Q_t + w_w \cdot W_t + w_c \cdot C_t \Big) + w_{\text{thr}} \cdot \Delta \text{Departures}_t$$
+
+### Python / PyTorch Integration
+
+```bash
+# 1. Run Python environment & PyTorch integration tests
+python tests/test_traffic_signal_env.py
+
+# 2. Train Deep Q-Network (DQN) agent on single intersection
+python scripts/train_rl_agent.py --episodes 40 --duration 180.0 --scenario Medium
+```
+
+Refer to [docs/rl_environment_design.md](docs/rl_environment_design.md) for complete MDP equations, safety proofs, and architecture details.
 
 ---
 
