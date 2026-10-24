@@ -193,6 +193,7 @@ add_library(syntraq_core STATIC
     src/ai/traffic_feature_scaler.cpp
     src/ai/traffic_predictor.cpp
     src/ai/traffic_signal_env.cpp
+    src/ai/rl_policy_inference.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
