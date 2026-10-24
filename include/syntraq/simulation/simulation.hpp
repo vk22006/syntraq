@@ -18,6 +18,7 @@
 #include "syntraq/vehicles/vehicle_spawner.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
@@ -45,6 +46,7 @@ struct SimState {
 class Simulation {
 public:
     explicit Simulation(Config cfg);
+    Simulation(Config cfg, std::function<RoadNetwork()> network_factory);
 
     /// Advance the simulation by one fixed timestep (cfg_.dt_seconds).
     void tick();
@@ -73,6 +75,11 @@ public:
     void set_spawn_interval(float interval_s);
     void set_max_vehicles(uint32_t max);
     void set_seed(uint32_t seed);
+
+    void set_allowed_spawn_origins(std::vector<IntersectionId> origins);
+    void set_allowed_spawn_destinations(std::vector<IntersectionId> destinations);
+    [[nodiscard]] const std::vector<IntersectionId>& allowed_spawn_origins() const noexcept { return allowed_origins_; }
+    [[nodiscard]] const std::vector<IntersectionId>& allowed_spawn_destinations() const noexcept { return allowed_destinations_; }
 
     [[nodiscard]] uint32_t queued_vehicle_count() const noexcept;
     [[nodiscard]] uint32_t max_queue_length() const noexcept;
@@ -147,6 +154,9 @@ private:
     bool                  data_collection_enabled_{ false };
     float                 accumulator_{ 0.0f };
     float                 time_scale_ { 1.0f };
+    std::function<RoadNetwork()> network_factory_{};
+    std::vector<IntersectionId>  allowed_origins_{};
+    std::vector<IntersectionId>  allowed_destinations_{};
 };
 
 } // namespace syntraq
