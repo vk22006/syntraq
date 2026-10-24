@@ -183,6 +183,7 @@ add_library(syntraq_core STATIC
     src/signals/traffic_light.cpp
     src/signals/fixed_time_controller.cpp
     src/signals/adaptive_controller.cpp
+    src/signals/rl_signal_controller.cpp
     src/signals/traffic_signal_controller.cpp
     src/routing/dijkstra_router.cpp
     src/routing/astar_router.cpp
@@ -191,6 +192,7 @@ add_library(syntraq_core STATIC
     src/metrics/traffic_data_collector.cpp
     src/ai/traffic_feature_scaler.cpp
     src/ai/traffic_predictor.cpp
+    src/ai/traffic_signal_env.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
@@ -279,6 +281,20 @@ target_compile_options(syntraq_compare_controllers PRIVATE
 add_executable(syntraq_generate_dataset experiments/generate_dataset.cpp)
 target_link_libraries(syntraq_generate_dataset PRIVATE syntraq_core)
 target_compile_options(syntraq_generate_dataset PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
+# ---------------------------------------------------------------------------
+# RL Environment C-API (Shared Library for Python ctypes integration)
+# ---------------------------------------------------------------------------
+add_library(syntraq_env_capi SHARED src/ai/env_c_api.cpp)
+target_include_directories(syntraq_env_capi PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(syntraq_env_capi PRIVATE syntraq_core)
+target_compile_definitions(syntraq_env_capi PRIVATE SYNTRAQ_ENV_EXPORTS)
+target_compile_options(syntraq_env_capi PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
