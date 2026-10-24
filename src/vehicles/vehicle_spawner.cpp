@@ -47,8 +47,8 @@ std::optional<Vehicle> VehicleSpawner::try_spawn(const RoadNetwork&          net
     IntersectionId src = kInvalidIntersectionId;
     IntersectionId dst = kInvalidIntersectionId;
     for (int attempt = 0; attempt < 10; ++attempt) {
-        src = random_intersection(network);
-        dst = random_intersection(network);
+        src = pick_source(network);
+        dst = pick_destination(network);
         if (src != dst) break;
     }
     if (src == dst) return std::nullopt;
@@ -125,6 +125,22 @@ std::vector<RoadId> VehicleSpawner::build_route(const RoadNetwork& network,
 }
 
 // ── private helpers ───────────────────────────────────────────────────────────
+
+IntersectionId VehicleSpawner::pick_source(const RoadNetwork& network) {
+    if (!allowed_origins.empty()) {
+        std::uniform_int_distribution<size_t> dist(0, allowed_origins.size() - 1);
+        return allowed_origins[dist(rng_)];
+    }
+    return random_intersection(network);
+}
+
+IntersectionId VehicleSpawner::pick_destination(const RoadNetwork& network) {
+    if (!allowed_destinations.empty()) {
+        std::uniform_int_distribution<size_t> dist(0, allowed_destinations.size() - 1);
+        return allowed_destinations[dist(rng_)];
+    }
+    return random_intersection(network);
+}
 
 IntersectionId VehicleSpawner::random_intersection(const RoadNetwork& network) {
     const auto& intersections = network.intersections();
