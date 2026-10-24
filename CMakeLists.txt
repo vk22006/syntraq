@@ -249,6 +249,16 @@ if(WIN32 AND EXISTS "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
     )
 endif()
 
+# Copy assets folder to output directory
+if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
+    add_custom_command(TARGET syntraq POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:syntraq>/assets"
+        COMMENT "Copying assets directory to output directory"
+    )
+endif()
+
 # ---------------------------------------------------------------------------
 # Benchmarks
 # ---------------------------------------------------------------------------
