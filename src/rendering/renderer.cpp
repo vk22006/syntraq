@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 
 namespace syntraq {
@@ -22,10 +23,39 @@ namespace syntraq {
 // ── Internal Camera Wrapper ──────────────────────────────────────────────────
 
 struct RenderCamera {
-    Camera2D cam{};
-    float    min_zoom{ 0.25f };
-    float    max_zoom{ 4.00f };
+    Camera2D  cam{};
+    float     min_zoom{ 0.25f };
+    float     max_zoom{ 4.00f };
+
+    // Tilemap textures
+    Texture2D sidewalks_tex{};
+    Texture2D road_tex{};
+    bool      textures_loaded{ false };
 };
+
+namespace {
+
+std::string resolve_asset_path(const std::string& rel_path) {
+    if (std::filesystem::exists(rel_path)) {
+        return rel_path;
+    }
+    if (std::filesystem::exists("../" + rel_path)) {
+        return "../" + rel_path;
+    }
+    if (std::filesystem::exists("../../" + rel_path)) {
+        return "../../" + rel_path;
+    }
+    const std::string app_dir = GetApplicationDirectory();
+    if (!app_dir.empty()) {
+        const std::filesystem::path p = std::filesystem::path(app_dir) / rel_path;
+        if (std::filesystem::exists(p)) {
+            return p.string();
+        }
+    }
+    return rel_path;
+}
+
+} // namespace
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -107,9 +137,33 @@ Renderer::Renderer(const Config& cfg)
     colors[ImGuiCol_HeaderHovered]        = ImVec4(0.22f, 0.30f, 0.44f, 0.80f);
     colors[ImGuiCol_HeaderActive]         = ImVec4(0.26f, 0.36f, 0.52f, 1.00f);
     colors[ImGuiCol_CheckMark]            = ImVec4(0.35f, 0.75f, 0.95f, 1.00f);
+
+    // ── Load tilemap textures ──────────────────────────────────────────────
+    const std::string sidewalks_path = resolve_asset_path("assets/Sidewalks.png");
+    if (std::filesystem::exists(sidewalks_path)) {
+        camera_->sidewalks_tex = LoadTexture(sidewalks_path.c_str());
+        if (camera_->sidewalks_tex.id > 0) {
+            SetTextureFilter(camera_->sidewalks_tex, TEXTURE_FILTER_POINT);
+        }
+    }
+
+    const std::string road_path = resolve_asset_path("assets/UpdatedDarkRoad.png");
+    if (std::filesystem::exists(road_path)) {
+        camera_->road_tex = LoadTexture(road_path.c_str());
+        if (camera_->road_tex.id > 0) {
+            SetTextureFilter(camera_->road_tex, TEXTURE_FILTER_POINT);
+        }
+    }
+    camera_->textures_loaded = (camera_->sidewalks_tex.id > 0 && camera_->road_tex.id > 0);
 }
 
 Renderer::~Renderer() {
+    if (camera_->sidewalks_tex.id > 0) {
+        UnloadTexture(camera_->sidewalks_tex);
+    }
+    if (camera_->road_tex.id > 0) {
+        UnloadTexture(camera_->road_tex);
+    }
     rlImGuiShutdown();
     CloseWindow();
 }
@@ -246,21 +300,55 @@ void Renderer::update_camera(const RoadNetwork& network) {
 
 void Renderer::begin_frame() {
     BeginDrawing();
-    ClearBackground(pal::bg);
+    ClearBackground(Color{ 75, 216, 51, 255 }); // Grass green matching Sidewalks.png
     rlImGuiBegin();
 }
 
 void Renderer::draw_world_grid() {
-    // Subtle background coordinate grid in world space
-    constexpr float kGridSpacing = 100.0f;
-    constexpr float kExtentMin   = -300.0f;
-    constexpr float kExtentMax   = 1200.0f;
+    if (camera_->sidewalks_tex.id > 0) {
+        constexpr float kTileSize = 32.0f;
 
-    for (float x = kExtentMin; x <= kExtentMax; x += kGridSpacing) {
-        DrawLineV({ x, kExtentMin }, { x, kExtentMax }, pal::grid_line);
-    }
-    for (float y = kExtentMin; y <= kExtentMax; y += kGridSpacing) {
-        DrawLineV({ kExtentMin, y }, { kExtentMax, y }, pal::grid_line);
+        // Viewport visible bounds in world coordinates
+        const Vector2 top_left = GetScreenToWorld2D({ 0.0f, 0.0f }, camera_->cam);
+        const Vector2 bot_right = GetScreenToWorld2D(
+            { static_cast<float>(GetScreenWidth()), static_cast<float>(GetScreenHeight()) },
+            camera_->cam
+        );
+
+        // Clamp to generous world bounds covering city extent
+        constexpr float kWorldMin = -800.0f;
+        constexpr float kWorldMax = 2000.0f;
+
+        const float start_x = std::max(kWorldMin, std::floor((top_left.x - kTileSize) / kTileSize) * kTileSize);
+        const float end_x   = std::min(kWorldMax, std::ceil((bot_right.x + kTileSize) / kTileSize) * kTileSize);
+        const float start_y = std::max(kWorldMin, std::floor((top_left.y - kTileSize) / kTileSize) * kTileSize);
+        const float end_y   = std::min(kWorldMax, std::ceil((bot_right.y + kTileSize) / kTileSize) * kTileSize);
+
+        for (float y = start_y; y <= end_y; y += kTileSize) {
+            const int gy = static_cast<int>(std::floor(y / kTileSize));
+            for (float x = start_x; x <= end_x; x += kTileSize) {
+                const int gx = static_cast<int>(std::floor(x / kTileSize));
+                // Deterministic pseudo-random variation across the 6 grass tiles in Sidewalks.png (x=0..192, y=288..320)
+                const uint32_t hash = static_cast<uint32_t>(gx * 73856093 ^ gy * 19349663);
+                const int variant = static_cast<int>(hash % 6);
+
+                const Rectangle src{ static_cast<float>(variant * 32), 288.0f, 32.0f, 32.0f };
+                const Vector2 pos{ x, y };
+                DrawTextureRec(camera_->sidewalks_tex, src, pos, WHITE);
+            }
+        }
+    } else {
+        // Fallback procedural coordinate grid
+        constexpr float kGridSpacing = 100.0f;
+        constexpr float kExtentMin   = -300.0f;
+        constexpr float kExtentMax   = 1200.0f;
+
+        for (float x = kExtentMin; x <= kExtentMax; x += kGridSpacing) {
+            DrawLineV({ x, kExtentMin }, { x, kExtentMax }, pal::grid_line);
+        }
+        for (float y = kExtentMin; y <= kExtentMax; y += kGridSpacing) {
+            DrawLineV({ kExtentMin, y }, { kExtentMax, y }, pal::grid_line);
+        }
     }
 }
 
@@ -278,25 +366,75 @@ void Renderer::draw_network(const RoadNetwork& network) {
 
         const float road_w = static_cast<float>(road.lane_count()) * kLaneWidthPx;
 
-        // Outer curb line
-        DrawLineEx(a, b, road_w + 3.0f, pal::road_edge);
-        // Main asphalt surface
-        DrawLineEx(a, b, road_w - 1.0f, pal::road_fill);
+        if (camera_->road_tex.id > 0) {
+            // Render road tiles once per bidirectional pair
+            if (static_cast<uint32_t>(road.from) < static_cast<uint32_t>(road.to)) {
+                const float dx = b.x - a.x;
+                const float dy = b.y - a.y;
+                const float len = std::hypot(dx, dy);
+                if (len > 0.0f) {
+                    const float ux = dx / len;
+                    const float uy = dy / len;
+                    const float angle_deg = std::atan2(dy, dx) * (180.0f / 3.141592653589793f);
 
-        // Dashed centre divider (draw once per bidirectional pair)
-        if (static_cast<uint32_t>(road.from) < static_cast<uint32_t>(road.to)) {
-            const float len = std::hypot(b.x - a.x, b.y - a.y);
-            if (len > 0.0f) {
-                const float dx = (b.x - a.x) / len;
-                const float dy = (b.y - a.y) / len;
-                constexpr float dash = 8.0f;
-                constexpr float gap  = 8.0f;
-                float t = gap;
-                while (t + dash < len) {
-                    DrawLineEx({ a.x + dx * t,          a.y + dy * t },
-                               { a.x + dx * (t + dash), a.y + dy * (t + dash) },
-                               1.5f, pal::lane_divider);
-                    t += dash + gap;
+                    constexpr float kJuncHalf = 16.0f; // Half-width of 32x32 junction box
+                    constexpr float kCwLen    = 32.0f; // Crosswalk tile length
+                    constexpr float kTileLen  = 32.0f; // Road tile length
+
+                    const bool has_cw_a = (network.incoming_roads(road.from).size() > 1 && len >= 96.0f);
+                    const bool has_cw_b = (network.incoming_roads(road.to).size() > 1 && len >= 96.0f);
+
+                    const float road_start = kJuncHalf + (has_cw_a ? kCwLen : 0.0f);
+                    const float road_end   = len - kJuncHalf - (has_cw_b ? kCwLen : 0.0f);
+
+                    // Crosswalk entering junction A (facing backwards towards A)
+                    if (has_cw_a) {
+                        const Vector2 pos{ a.x + ux * kJuncHalf, a.y + uy * kJuncHalf };
+                        const Rectangle src_cw{ 32.0f, 96.0f, -32.0f, 32.0f };
+                        const Rectangle dst_cw{ pos.x, pos.y, 32.0f, 32.0f };
+                        DrawTexturePro(camera_->road_tex, src_cw, dst_cw, { 0.0f, 16.0f }, angle_deg, WHITE);
+                    }
+
+                    // Tiled straight road segments with asphalt and dashed center lane divider
+                    float d = road_start;
+                    while (d < road_end) {
+                        const float step = std::min(kTileLen, road_end - d);
+                        const Vector2 pos{ a.x + ux * d, a.y + uy * d };
+                        const Rectangle src_r{ 0.0f, 96.0f, step, 32.0f };
+                        const Rectangle dst_r{ pos.x, pos.y, step, 32.0f };
+                        DrawTexturePro(camera_->road_tex, src_r, dst_r, { 0.0f, 16.0f }, angle_deg, WHITE);
+                        d += step;
+                    }
+
+                    // Crosswalk entering junction B (facing forward towards B)
+                    if (has_cw_b) {
+                        const Vector2 pos{ a.x + ux * (len - kJuncHalf - kCwLen), a.y + uy * (len - kJuncHalf - kCwLen) };
+                        const Rectangle src_cw{ 32.0f, 96.0f, 32.0f, 32.0f };
+                        const Rectangle dst_cw{ pos.x, pos.y, 32.0f, 32.0f };
+                        DrawTexturePro(camera_->road_tex, src_cw, dst_cw, { 0.0f, 16.0f }, angle_deg, WHITE);
+                    }
+                }
+            }
+        } else {
+            // Procedural fallback
+            DrawLineEx(a, b, road_w + 3.0f, pal::road_edge);
+            DrawLineEx(a, b, road_w - 1.0f, pal::road_fill);
+
+            // Dashed centre divider (draw once per bidirectional pair)
+            if (static_cast<uint32_t>(road.from) < static_cast<uint32_t>(road.to)) {
+                const float len = std::hypot(b.x - a.x, b.y - a.y);
+                if (len > 0.0f) {
+                    const float dx = (b.x - a.x) / len;
+                    const float dy = (b.y - a.y) / len;
+                    constexpr float dash = 8.0f;
+                    constexpr float gap  = 8.0f;
+                    float t = gap;
+                    while (t + dash < len) {
+                        DrawLineEx({ a.x + dx * t,          a.y + dy * t },
+                                   { a.x + dx * (t + dash), a.y + dy * (t + dash) },
+                                   1.5f, pal::lane_divider);
+                        t += dash + gap;
+                    }
                 }
             }
         }
@@ -340,13 +478,21 @@ void Renderer::draw_network(const RoadNetwork& network) {
         const float cx = node.position.x;
         const float cy = node.position.y;
 
-        // Junction apron (blends with road asphalt, preventing protruding edges)
-        DrawCircleV({ cx, cy }, kIntersectionRadius, pal::node_apron);
-        DrawCircleLinesV({ cx, cy }, kIntersectionRadius, pal::road_edge);
+        if (camera_->road_tex.id > 0) {
+            // Textured junction center square from UpdatedDarkRoad.png (32x32)
+            const Rectangle junc_src{ 64.0f, 96.0f, 32.0f, 32.0f };
+            const Rectangle junc_dest{ cx, cy, 32.0f, 32.0f };
+            const Vector2 junc_origin{ 16.0f, 16.0f };
+            DrawTexturePro(camera_->road_tex, junc_src, junc_dest, junc_origin, 0.0f, WHITE);
+        } else {
+            // Junction apron (blends with road asphalt, preventing protruding edges)
+            DrawCircleV({ cx, cy }, kIntersectionRadius, pal::node_apron);
+            DrawCircleLinesV({ cx, cy }, kIntersectionRadius, pal::road_edge);
 
-        // Technical junction core disc
-        DrawCircleV({ cx, cy }, 5.5f, pal::node_core);
-        DrawCircleLinesV({ cx, cy }, 5.5f, pal::node_border);
+            // Technical junction core disc
+            DrawCircleV({ cx, cy }, 5.5f, pal::node_core);
+            DrawCircleLinesV({ cx, cy }, 5.5f, pal::node_border);
+        }
 
         // Debug: Show intersection IDs (OFF by default)
         if (debug_flags_.show_intersection_ids) {
