@@ -27,6 +27,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Native AI Inference Engine | ONNX Runtime C++ API, feature scaler parity, async inference, latency telemetry | ✅ Complete |
 | Adaptive Signal Optimization | Deterministic actuated/adaptive traffic signal controller (FixedTime vs. Adaptive) | ✅ Complete |
 | Reinforcement Learning Environment | Single-intersection MDP, Gymnasium & PyTorch interface, DQN policy | ✅ Complete |
+| RL Traffic Signal Controller | PyTorch Double DQN, multi-seed evaluation, ONNX export, C++ inference | ✅ Complete |
 
 ---
 
@@ -38,7 +39,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (158 tests) |
+| Tests          | GoogleTest + CTest (163 tests) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
@@ -141,6 +142,7 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+.\build\bin\test_rl_policy_inference.exe
 .\build\bin\test_traffic_signal_env.exe
 .\build\bin\test_adaptive_controller.exe
 .\build\bin\test_traffic_predictor.exe
@@ -286,32 +288,51 @@ SyntraQ provides a dedicated Gymnasium-compatible Reinforcement Learning (RL) en
 - **Reward Function**: Penalizes queue lengths, waiting times, and network congestion while rewarding completed departures:
   $$R_t = -\Big( w_q \cdot Q_t + w_w \cdot W_t + w_c \cdot C_t \Big) + w_{\text{thr}} \cdot \Delta \text{Departures}_t$$
 
-### Python / PyTorch Integration
+### Python / PyTorch Integration & Training
 
 ```powershell
 # 1. Run Python environment & PyTorch integration tests
 python -m unittest tests/test_traffic_signal_env.py
 
-# 2. Train Deep Q-Network (DQN) agent on single intersection
-python scripts/train_rl_agent.py --episodes 40 --duration 180.0 --scenario Medium
+# 2. Train Deep Q-Network (DQN) agent and run 10-seed multi-benchmark
+python scripts/train_rl_agent.py --episodes 50 --duration 180.0 --scenario Medium
+
+# 3. Export trained DQN policy to ONNX with numerical validation
+python scripts/export_rl_onnx.py
+
+# 4. Execute C++ native ONNX inference validation test
+.\build\bin\test_rl_policy_inference.exe
 ```
 
-### Single-Intersection RL vs Fixed-Time Benchmark (Seed 42)
+### Multi-Seed Benchmark Across 10 Independent Seeds ($N = 10$)
 
-| Metric | Fixed-Time Baseline (30s Split) | Trained DQN Agent | Improvement ($\Delta$) |
-| :--- | :---: | :---: | :---: |
-| **Cumulative Episode Reward** | $-138.83$ | **$-78.93$** | **$+43.1\%$** |
-| **Mean Queue Length** | $1.99\,\text{veh}$ | **$0.72\,\text{veh}$** | **$-63.8\%$** |
-| **Max Queue Length** | $8.00\,\text{veh}$ | **$4.00\,\text{veh}$** | **$-50.0\%$** |
-| **Mean Waiting Time** | $2.44\,\text{s}$ | **$1.13\,\text{s}$** | **$-53.7\%$** |
-| **Mean Speed** | $8.86\,\text{m/s}$ | **$10.32\,\text{m/s}$** | **$+16.5\%$** |
-| **Total Completed Trips** | $130$ | **$143$** | **$+10.0\%$** |
+To guarantee statistical validity without claiming superiority on a single isolated run, all three controllers were evaluated on 10 independent random seeds (`42, 101, 202, 303, 404, 505, 606, 707, 808, 909`) under Medium traffic:
 
-### Artifacts & Visualizations
-- **DQN Model Checkpoint**: `models/traffic_signal_dqn.pt`
-- **Evaluation Results**: `models/rl_evaluation_results.json`
-- **Visual Diagnostics**: [docs/rl_training_curves.png](docs/rl_training_curves.png)
-- **Detailed Design Document**: [docs/rl_environment_design.md](docs/rl_environment_design.md)
+| Performance Metric | Fixed-Time Baseline | Adaptive Heuristic | Trained DQN Policy | DQN vs Fixed-Time ($\Delta$) | DQN vs Adaptive ($\Delta$) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Episode Return (Reward)** | $-370.83 \pm 104.33$ | $-416.97 \pm 110.06$ | **$-162.36 \pm 21.62$** | **$+56.2\%$** | **$+61.1\%$** |
+| **Average Queue Length** | $6.66 \pm 1.66\,\text{veh}$ | $7.24 \pm 1.68\,\text{veh}$ | **$3.32 \pm 0.35\,\text{veh}$** | **$-50.1\%$** | **$-54.1\%$** |
+| **Peak Queue Length** | $18.10 \pm 3.38\,\text{veh}$ | $17.40 \pm 3.24\,\text{veh}$ | **$8.40 \pm 1.17\,\text{veh}$** | **$-53.6\%$** | **$-51.7\%$** |
+| **Average Waiting Time** | $14.08 \pm 3.58\,\text{s}$ | $16.18 \pm 4.48\,\text{s}$ | **$6.88 \pm 0.86\,\text{s}$** | **$-51.1\%$** | **$-57.5\%$** |
+| **Completed Departures** | $48.70 \pm 3.23\,\text{trips}$ | $48.50 \pm 4.01\,\text{trips}$ | **$53.50 \pm 2.37\,\text{trips}$** | **$+9.9\%$** | **$+10.3\%$** |
+| **Average Approach Speed** | $3.20 \pm 0.09\,\text{m/s}$ | $3.17 \pm 0.09\,\text{m/s}$ | **$3.29 \pm 0.05\,\text{m/s}$** | **$+2.8\%$** | **$+3.8\%$** |
+| **Congestion Ratio** | $0.35 \pm 0.06$ | $0.38 \pm 0.05$ | **$0.24 \pm 0.02$** | **$-31.4\%$** | **$-36.8\%$** |
+
+### Key Findings & Variance Analysis
+- **$4.8\times$ Variance Compression**: DQN achieves $\sigma_{\text{reward}} = 21.62$ compared to $104.33$ for Fixed-Time and $110.06$ for Adaptive, demonstrating high behavioral stability across variable traffic arrival profiles.
+- **Queue Surge Suppression**: Peak queue surges are cut by **$-53.6\%$** ($18.1 \to 8.4\,\text{veh}$) as the network anticipates approaching platoons before queues accumulate.
+- **Native ONNX Deployment**: Exported to `traffic_signal_dqn.onnx` (Opset 17) with **$< 15\,\mu\text{s}$** inference latency via C++ `RLPolicyInference` and exact float parity ($0.0$ max discrepancy).
+
+### Artifacts & Reports
+- **PyTorch Model Checkpoint**: `models/traffic_signal_dqn.pt`
+- **Exported ONNX Model**: `models/traffic_signal_dqn.onnx`
+- **Multi-Seed Benchmark JSON**: `models/controller_three_way_comparison.json`
+- **C++ Reference Test Vectors**: `models/rl_onnx_test_vectors.json`
+- **Diagnostic Visualizations**:
+  - Training Telemetry: [docs/rl_training_curves.png](docs/rl_training_curves.png)
+  - Multi-Seed 4-Panel Comparison: [docs/controller_three_way_comparison.png](docs/controller_three_way_comparison.png)
+- **Detailed Evaluation Report**: [docs/rl_controller_evaluation.md](docs/rl_controller_evaluation.md)
+- **Environment Design Document**: [docs/rl_environment_design.md](docs/rl_environment_design.md)
 
 ---
 
@@ -326,7 +347,7 @@ SyntraQ/
 │   ├── signals/       # Traffic signals (Interface, FixedTime, Adaptive, RL) (.hpp)
 │   ├── routing/       # Routing engine (Dijkstra, A*, Heuristics, Costs) (.hpp)
 │   ├── metrics/       # Telemetry & ML dataset collectors (.hpp)
-│   ├── ai/            # ONNX Runtime predictor, scaler, RL env, and C-ABI (.hpp / .h)
+│   ├── ai/            # Predictor, feature scaler, RL env, C-ABI, RLPolicyInference (.hpp / .h)
 │   ├── simulation/    # Headless simulation loop & state (.hpp)
 │   └── rendering/     # Raylib + ImGui renderer (.hpp)
 ├── src/
@@ -336,19 +357,19 @@ SyntraQ/
 │   ├── signals/       # FixedTimeController, AdaptiveController, RLSignalController
 │   ├── routing/       # Dijkstra, A*, and graph generator
 │   ├── metrics/       # Telemetry collector, ML data generator, CSV exporters
-│   ├── ai/            # Predictor, FeatureScaler, TrafficSignalEnv, env_c_api
+│   ├── ai/            # Predictor, FeatureScaler, TrafficSignalEnv, env_c_api, RLPolicyInference
 │   ├── simulation/    # Simulation loop & scenario management
 │   ├── rendering/     # Renderer and three-panel UI layout
 │   └── main.cpp       # CLI parsing and application entry point
 ├── experiments/       # Baseline experiments, controller comparison, and dataset generator
-├── scripts/           # ML training, DQN training, Gymnasium env, and evaluation scripts
-├── tests/             # GoogleTest & Python test suites (158 C++ tests + 6 Python tests)
+├── scripts/           # ML training, DQN pipeline, ONNX exporter, Gymnasium env
+├── tests/             # GoogleTest & Python test suites (163 C++ tests + 6 Python tests)
 ├── benchmarks/        # Routing engine benchmarks (Dijkstra vs A*)
 ├── configs/           # Scenario JSON configurations
 ├── data/              # Experiment datasets, ML training data, and reference validation sets
 ├── assets/            # Fonts, textures (future)
-├── models/            # Trained PyTorch, DQN, classical, and ONNX models (.pt, .joblib, .onnx)
-└── docs/              # Layout screenshots, dataset specs, benchmarks, and design documents
+├── models/            # Trained PyTorch, DQN, classical, and ONNX models (.pt, .onnx, .joblib)
+└── docs/              # Layout screenshots, dataset specs, benchmarks, and evaluation reports
 ```
 
 ---
