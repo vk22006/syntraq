@@ -2,7 +2,7 @@
 
 A research-oriented C++20 simulation platform that models urban traffic and evaluates AI-based traffic management strategies.
 
-![screenshot](docs/layout_1200x720.png)
+![screenshot](docs/layout_1600x900.png)
 
 ---
 
