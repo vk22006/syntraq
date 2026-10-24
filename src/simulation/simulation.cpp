@@ -11,15 +11,21 @@
 namespace syntraq {
 
 Simulation::Simulation(Config cfg)
+    : Simulation(std::move(cfg), [] { return make_test_map(); })
+{
+}
+
+Simulation::Simulation(Config cfg, std::function<RoadNetwork()> network_factory)
     : cfg_          (std::move(cfg))
     , scenario_cfg_ (get_scenario_preset(cfg_.scenario, cfg_.seed))
     , state_        {}
-    , network_      (make_test_map())
+    , network_      (network_factory ? network_factory() : make_test_map())
     , spawner_      (cfg_.seed,
                      cfg_.vehicle_spawn_interval_s,
                      cfg_.max_vehicles)
     , accumulator_  (0.0f)
     , time_scale_   (1.0f)
+    , network_factory_(std::move(network_factory))
 {
     // If config specified default scenario, reflect presets
     if (cfg_.scenario != TrafficScenario::Custom) {
@@ -51,6 +57,12 @@ void Simulation::init_default_signals() {
                     ac_cfg,
                     cfg_.default_yellow_duration_s,
                     cfg_.default_all_red_duration_s);
+            } else if (cfg_.signal_controller_type == SignalControllerType::ReinforcementLearning) {
+                RLControllerConfig rl_cfg;
+                rl_cfg.min_green_s = cfg_.default_green_duration_s;
+                rl_cfg.yellow_s    = cfg_.default_yellow_duration_s;
+                rl_cfg.all_red_s   = cfg_.default_all_red_duration_s;
+                c = TrafficSignalController::make_rl(network_, id, rl_cfg);
             } else {
                 c = TrafficSignalController::make_fixed_time(
                     network_,
@@ -169,11 +181,17 @@ void Simulation::run_for(float duration_s) {
 void Simulation::reset() {
     state_                 = SimState{};
     state_.scenario        = cfg_.scenario;
-    network_               = make_test_map();
+    network_               = network_factory_ ? network_factory_() : make_test_map();
     vehicles_.clear();
     spawner_               = VehicleSpawner{ scenario_cfg_.seed,
                                              scenario_cfg_.spawn_interval_s,
                                              scenario_cfg_.max_vehicles };
+    if (!allowed_origins_.empty()) {
+        spawner_.allowed_origins = allowed_origins_;
+    }
+    if (!allowed_destinations_.empty()) {
+        spawner_.allowed_destinations = allowed_destinations_;
+    }
     accumulator_           = 0.0f;
     for (auto& [id, controller] : signal_controllers_) {
         controller.reset();
@@ -236,6 +254,16 @@ void Simulation::set_seed(uint32_t seed) {
     scenario_cfg_.seed = seed;
     spawner_.set_seed(seed);
     metrics_collector_.set_seed(seed);
+}
+
+void Simulation::set_allowed_spawn_origins(std::vector<IntersectionId> origins) {
+    allowed_origins_ = std::move(origins);
+    spawner_.allowed_origins = allowed_origins_;
+}
+
+void Simulation::set_allowed_spawn_destinations(std::vector<IntersectionId> destinations) {
+    allowed_destinations_ = std::move(destinations);
+    spawner_.allowed_destinations = allowed_destinations_;
 }
 
 uint32_t Simulation::queued_vehicle_count() const noexcept {
