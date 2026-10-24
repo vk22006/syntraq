@@ -141,6 +141,7 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+.\build\bin\test_traffic_signal_env.exe
 .\build\bin\test_adaptive_controller.exe
 .\build\bin\test_traffic_predictor.exe
 .\build\bin\test_data_generation.exe
@@ -148,6 +149,9 @@ Or execute targeted test suites directly:
 .\build\bin\test_metrics.exe
 .\build\bin\test_routing.exe
 .\build\bin\test_signals.exe
+
+# Run Python RL environment and PyTorch integration tests
+python -m unittest tests/test_traffic_signal_env.py
 ```
 
 ---
@@ -284,15 +288,30 @@ SyntraQ provides a dedicated Gymnasium-compatible Reinforcement Learning (RL) en
 
 ### Python / PyTorch Integration
 
-```bash
+```powershell
 # 1. Run Python environment & PyTorch integration tests
-python tests/test_traffic_signal_env.py
+python -m unittest tests/test_traffic_signal_env.py
 
 # 2. Train Deep Q-Network (DQN) agent on single intersection
 python scripts/train_rl_agent.py --episodes 40 --duration 180.0 --scenario Medium
 ```
 
-Refer to [docs/rl_environment_design.md](docs/rl_environment_design.md) for complete MDP equations, safety proofs, and architecture details.
+### Single-Intersection RL vs Fixed-Time Benchmark (Seed 42)
+
+| Metric | Fixed-Time Baseline (30s Split) | Trained DQN Agent | Improvement ($\Delta$) |
+| :--- | :---: | :---: | :---: |
+| **Cumulative Episode Reward** | $-138.83$ | **$-78.93$** | **$+43.1\%$** |
+| **Mean Queue Length** | $1.99\,\text{veh}$ | **$0.72\,\text{veh}$** | **$-63.8\%$** |
+| **Max Queue Length** | $8.00\,\text{veh}$ | **$4.00\,\text{veh}$** | **$-50.0\%$** |
+| **Mean Waiting Time** | $2.44\,\text{s}$ | **$1.13\,\text{s}$** | **$-53.7\%$** |
+| **Mean Speed** | $8.86\,\text{m/s}$ | **$10.32\,\text{m/s}$** | **$+16.5\%$** |
+| **Total Completed Trips** | $130$ | **$143$** | **$+10.0\%$** |
+
+### Artifacts & Visualizations
+- **DQN Model Checkpoint**: `models/traffic_signal_dqn.pt`
+- **Evaluation Results**: `models/rl_evaluation_results.json`
+- **Visual Diagnostics**: [docs/rl_training_curves.png](docs/rl_training_curves.png)
+- **Detailed Design Document**: [docs/rl_environment_design.md](docs/rl_environment_design.md)
 
 ---
 
@@ -304,32 +323,32 @@ SyntraQ/
 │   ├── core/          # Config and shared types (.hpp)
 │   ├── world/         # Road network graph (Intersections & Roads) (.hpp)
 │   ├── vehicles/      # Vehicle kinematics, car-following, and spawner (.hpp)
-│   ├── signals/       # Traffic signals (Interface, FixedTime, Adaptive) (.hpp)
+│   ├── signals/       # Traffic signals (Interface, FixedTime, Adaptive, RL) (.hpp)
 │   ├── routing/       # Routing engine (Dijkstra, A*, Heuristics, Costs) (.hpp)
 │   ├── metrics/       # Telemetry & ML dataset collectors (.hpp)
-│   ├── ai/            # ONNX Runtime predictor & feature scaler (.hpp)
+│   ├── ai/            # ONNX Runtime predictor, scaler, RL env, and C-ABI (.hpp / .h)
 │   ├── simulation/    # Headless simulation loop & state (.hpp)
 │   └── rendering/     # Raylib + ImGui renderer (.hpp)
 ├── src/
 │   ├── core/          # Config implementation
-│   ├── world/         # Road network implementation
+│   ├── world/         # Road network implementation & single-intersection topology
 │   ├── vehicles/      # Kinematics and queue formation systems
-│   ├── signals/       # FixedTimeController, AdaptiveController, TrafficSignalController
+│   ├── signals/       # FixedTimeController, AdaptiveController, RLSignalController
 │   ├── routing/       # Dijkstra, A*, and graph generator
 │   ├── metrics/       # Telemetry collector, ML data generator, CSV exporters
-│   ├── ai/            # TrafficPredictor & TrafficFeatureScaler implementation
+│   ├── ai/            # Predictor, FeatureScaler, TrafficSignalEnv, env_c_api
 │   ├── simulation/    # Simulation loop & scenario management
 │   ├── rendering/     # Renderer and three-panel UI layout
 │   └── main.cpp       # CLI parsing and application entry point
 ├── experiments/       # Baseline experiments, controller comparison, and dataset generator
-├── scripts/           # Statistical analysis, ML training, and controller evaluation scripts
-├── tests/             # GoogleTest suites (147 tests across all subsystems)
+├── scripts/           # ML training, DQN training, Gymnasium env, and evaluation scripts
+├── tests/             # GoogleTest & Python test suites (158 C++ tests + 6 Python tests)
 ├── benchmarks/        # Routing engine benchmarks (Dijkstra vs A*)
 ├── configs/           # Scenario JSON configurations
 ├── data/              # Experiment datasets, ML training data, and reference validation sets
 ├── assets/            # Fonts, textures (future)
-├── models/            # Trained PyTorch, classical, and ONNX models (.pt, .joblib, .onnx)
-└── docs/              # Layout screenshots, dataset specifications, and benchmark docs
+├── models/            # Trained PyTorch, DQN, classical, and ONNX models (.pt, .joblib, .onnx)
+└── docs/              # Layout screenshots, dataset specs, benchmarks, and design documents
 ```
 
 ---
