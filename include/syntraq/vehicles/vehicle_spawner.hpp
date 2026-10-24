@@ -54,14 +54,22 @@ public:
     }
 
     // ── Configuration ─────────────────────────────────────────────────────
-    float    spawn_interval_s{ 2.0f };
-    uint32_t max_vehicles    { 50 };
+    float                       spawn_interval_s{ 2.0f };
+    uint32_t                    max_vehicles    { 50 };
+    std::vector<IntersectionId> allowed_origins{};
+    std::vector<IntersectionId> allowed_destinations{};
 
 private:
     std::mt19937                          rng_;
     uint32_t                              next_vehicle_id_{ 0 };
     float                                 last_spawn_s_   { -999.f }; // Forces first spawn immediately
     std::shared_ptr<const IRouteProvider> route_provider_;
+
+    /// Pick an origin intersection ID from allowed_origins (or network).
+    IntersectionId pick_source(const RoadNetwork& network);
+
+    /// Pick a destination intersection ID from allowed_destinations (or network).
+    IntersectionId pick_destination(const RoadNetwork& network);
 
     /// Pick a random intersection ID from the network.
     IntersectionId random_intersection(const RoadNetwork& network);
