@@ -9,6 +9,7 @@
 //
 
 #include "syntraq/core/config.hpp"
+#include "syntraq/signals/network_coordination_manager.hpp"
 #include "syntraq/signals/traffic_signal_controller.hpp"
 #include "syntraq/world/road_network.hpp"
 #include "syntraq/vehicles/vehicle.hpp"
@@ -18,10 +19,14 @@
 #include "syntraq/vehicles/vehicle_spawner.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
 namespace syntraq {
+
+class RLPolicyInference;
+class TrafficAwareRouting;
 
 /// Simulation state snapshot — what is known after each tick.
 struct SimState {
@@ -37,6 +42,7 @@ struct SimState {
     float           avg_travel_time_s{ 0.0f }; ///< Average travel time of vehicles (s)
     float           throughput_vph { 0.0f }; ///< Cumulative throughput (veh/h)
     float           congestion_ratio{ 0.0f }; ///< Fraction of active fleet in queue [0.0 .. 1.0]
+    float           simulation_fps { 0.0f }; ///< Measured simulation updates per real-world second
     TrafficScenario scenario       { TrafficScenario::Medium };
     bool            running        { true };
 };
@@ -45,6 +51,7 @@ struct SimState {
 class Simulation {
 public:
     explicit Simulation(Config cfg);
+    Simulation(Config cfg, std::function<RoadNetwork()> network_factory);
 
     /// Advance the simulation by one fixed timestep (cfg_.dt_seconds).
     void tick();
@@ -74,11 +81,20 @@ public:
     void set_max_vehicles(uint32_t max);
     void set_seed(uint32_t seed);
 
+    void set_allowed_spawn_origins(std::vector<IntersectionId> origins);
+    void set_allowed_spawn_destinations(std::vector<IntersectionId> destinations);
+    [[nodiscard]] const std::vector<IntersectionId>& allowed_spawn_origins() const noexcept { return allowed_origins_; }
+    [[nodiscard]] const std::vector<IntersectionId>& allowed_spawn_destinations() const noexcept { return allowed_destinations_; }
+
     [[nodiscard]] uint32_t queued_vehicle_count() const noexcept;
     [[nodiscard]] uint32_t max_queue_length() const noexcept;
 
     // ── Traffic Signals ───────────────────────────────────────────────────
     void set_signal_controller(TrafficSignalController controller);
+    void set_signal_controller_type(SignalControllerType type);
+    [[nodiscard]] SignalControllerType signal_controller_type() const noexcept {
+        return cfg_.signal_controller_type;
+    }
 
     [[nodiscard]] const TrafficSignalController* signal_controller(IntersectionId id) const noexcept;
     [[nodiscard]]       TrafficSignalController* signal_controller(IntersectionId id)       noexcept;
@@ -86,12 +102,27 @@ public:
     [[nodiscard]] const std::unordered_map<IntersectionId, TrafficSignalController>&
         signal_controllers() const noexcept { return signal_controllers_; }
 
+    /// Extract 12-dimensional normalized observation vector for an intersection
+    [[nodiscard]] std::vector<float> compute_rl_observation(IntersectionId id) const;
+
+    [[nodiscard]] std::shared_ptr<RLPolicyInference> shared_rl_policy() const noexcept {
+        return shared_rl_policy_;
+    }
+
+    [[nodiscard]] const NetworkCoordinationManager& coordination_manager() const noexcept {
+        return coordination_manager_;
+    }
+
     // ── Routing Engine ───────────────────────────────────────────────────
     void set_route_provider(std::shared_ptr<const IRouteProvider> provider) {
         spawner_.set_route_provider(std::move(provider));
     }
     [[nodiscard]] const IRouteProvider& route_provider() const noexcept {
         return spawner_.route_provider();
+    }
+    void set_routing_strategy_type(RoutingStrategyType type);
+    [[nodiscard]] RoutingStrategyType routing_strategy_type() const noexcept {
+        return cfg_.routing_strategy;
     }
 
     // ── Traffic Metrics Subsystem ─────────────────────────────────────────
@@ -128,6 +159,7 @@ public:
 private:
     void despawn_arrived();
     void init_default_signals();
+    void init_default_routing();
 
     Config                cfg_;
     TrafficScenarioConfig scenario_cfg_;
@@ -143,6 +175,14 @@ private:
     bool                  data_collection_enabled_{ false };
     float                 accumulator_{ 0.0f };
     float                 time_scale_ { 1.0f };
+    std::function<RoadNetwork()> network_factory_{};
+    std::vector<IntersectionId>  allowed_origins_{};
+    std::vector<IntersectionId>  allowed_destinations_{};
+    std::shared_ptr<RLPolicyInference>  shared_rl_policy_{ nullptr };
+    std::shared_ptr<TrafficAwareRouting> traffic_aware_router_{ nullptr };
+    NetworkCoordinationManager          coordination_manager_{};
+    float                               real_time_window_{ 0.0f };
+    uint32_t                     ticks_in_window_{ 0 };
 };
 
 } // namespace syntraq

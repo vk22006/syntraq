@@ -6,6 +6,8 @@
 //
 
 #include "syntraq/rendering/renderer.hpp"
+#include "syntraq/signals/rl_controller.hpp"
+#include "syntraq/signals/coordinated_controller.hpp"
 
 // Third-party headers — isolated to this .cpp
 #include "raylib.h"
@@ -15,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 
 namespace syntraq {
@@ -22,10 +25,39 @@ namespace syntraq {
 // ── Internal Camera Wrapper ──────────────────────────────────────────────────
 
 struct RenderCamera {
-    Camera2D cam{};
-    float    min_zoom{ 0.25f };
-    float    max_zoom{ 4.00f };
+    Camera2D  cam{};
+    float     min_zoom{ 0.25f };
+    float     max_zoom{ 4.00f };
+
+    // Tilemap textures
+    Texture2D sidewalks_tex{};
+    Texture2D road_tex{};
+    bool      textures_loaded{ false };
 };
+
+namespace {
+
+std::string resolve_asset_path(const std::string& rel_path) {
+    if (std::filesystem::exists(rel_path)) {
+        return rel_path;
+    }
+    if (std::filesystem::exists("../" + rel_path)) {
+        return "../" + rel_path;
+    }
+    if (std::filesystem::exists("../../" + rel_path)) {
+        return "../../" + rel_path;
+    }
+    const std::string app_dir = GetApplicationDirectory();
+    if (!app_dir.empty()) {
+        const std::filesystem::path p = std::filesystem::path(app_dir) / rel_path;
+        if (std::filesystem::exists(p)) {
+            return p.string();
+        }
+    }
+    return rel_path;
+}
+
+} // namespace
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -107,9 +139,33 @@ Renderer::Renderer(const Config& cfg)
     colors[ImGuiCol_HeaderHovered]        = ImVec4(0.22f, 0.30f, 0.44f, 0.80f);
     colors[ImGuiCol_HeaderActive]         = ImVec4(0.26f, 0.36f, 0.52f, 1.00f);
     colors[ImGuiCol_CheckMark]            = ImVec4(0.35f, 0.75f, 0.95f, 1.00f);
+
+    // ── Load tilemap textures ──────────────────────────────────────────────
+    const std::string sidewalks_path = resolve_asset_path("assets/Sidewalks.png");
+    if (std::filesystem::exists(sidewalks_path)) {
+        camera_->sidewalks_tex = LoadTexture(sidewalks_path.c_str());
+        if (camera_->sidewalks_tex.id > 0) {
+            SetTextureFilter(camera_->sidewalks_tex, TEXTURE_FILTER_POINT);
+        }
+    }
+
+    const std::string road_path = resolve_asset_path("assets/UpdatedDarkRoad.png");
+    if (std::filesystem::exists(road_path)) {
+        camera_->road_tex = LoadTexture(road_path.c_str());
+        if (camera_->road_tex.id > 0) {
+            SetTextureFilter(camera_->road_tex, TEXTURE_FILTER_POINT);
+        }
+    }
+    camera_->textures_loaded = (camera_->sidewalks_tex.id > 0 && camera_->road_tex.id > 0);
 }
 
 Renderer::~Renderer() {
+    if (camera_->sidewalks_tex.id > 0) {
+        UnloadTexture(camera_->sidewalks_tex);
+    }
+    if (camera_->road_tex.id > 0) {
+        UnloadTexture(camera_->road_tex);
+    }
     rlImGuiShutdown();
     CloseWindow();
 }
@@ -166,7 +222,9 @@ SimControlAction Renderer::render_frame(
     const RoadNetwork&                                                 network,
     const std::vector<Vehicle>&                                        vehicles,
     float                                                              current_speed_scale,
-    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+    SignalControllerType                                               controller_type,
+    RoutingStrategyType                                                active_routing) {
     update_camera(network);
 
     begin_frame();
@@ -183,7 +241,7 @@ SimControlAction Renderer::render_frame(
 
     // ── Screen Space HUD & UI Overlays ─────────────────────────────────────
     draw_status_bar(state, current_speed_scale);
-    SimControlAction action = draw_imgui(state, network, current_speed_scale, signal_controllers);
+    SimControlAction action = draw_imgui(state, network, current_speed_scale, signal_controllers, controller_type, active_routing);
 
     end_frame();
 
@@ -246,21 +304,55 @@ void Renderer::update_camera(const RoadNetwork& network) {
 
 void Renderer::begin_frame() {
     BeginDrawing();
-    ClearBackground(pal::bg);
+    ClearBackground(Color{ 75, 216, 51, 255 }); // Grass green matching Sidewalks.png
     rlImGuiBegin();
 }
 
 void Renderer::draw_world_grid() {
-    // Subtle background coordinate grid in world space
-    constexpr float kGridSpacing = 100.0f;
-    constexpr float kExtentMin   = -300.0f;
-    constexpr float kExtentMax   = 1200.0f;
+    if (camera_->sidewalks_tex.id > 0) {
+        constexpr float kTileSize = 32.0f;
 
-    for (float x = kExtentMin; x <= kExtentMax; x += kGridSpacing) {
-        DrawLineV({ x, kExtentMin }, { x, kExtentMax }, pal::grid_line);
-    }
-    for (float y = kExtentMin; y <= kExtentMax; y += kGridSpacing) {
-        DrawLineV({ kExtentMin, y }, { kExtentMax, y }, pal::grid_line);
+        // Viewport visible bounds in world coordinates
+        const Vector2 top_left = GetScreenToWorld2D({ 0.0f, 0.0f }, camera_->cam);
+        const Vector2 bot_right = GetScreenToWorld2D(
+            { static_cast<float>(GetScreenWidth()), static_cast<float>(GetScreenHeight()) },
+            camera_->cam
+        );
+
+        // Clamp to generous world bounds covering city extent
+        constexpr float kWorldMin = -800.0f;
+        constexpr float kWorldMax = 2000.0f;
+
+        const float start_x = std::max(kWorldMin, std::floor((top_left.x - kTileSize) / kTileSize) * kTileSize);
+        const float end_x   = std::min(kWorldMax, std::ceil((bot_right.x + kTileSize) / kTileSize) * kTileSize);
+        const float start_y = std::max(kWorldMin, std::floor((top_left.y - kTileSize) / kTileSize) * kTileSize);
+        const float end_y   = std::min(kWorldMax, std::ceil((bot_right.y + kTileSize) / kTileSize) * kTileSize);
+
+        for (float y = start_y; y <= end_y; y += kTileSize) {
+            const int gy = static_cast<int>(std::floor(y / kTileSize));
+            for (float x = start_x; x <= end_x; x += kTileSize) {
+                const int gx = static_cast<int>(std::floor(x / kTileSize));
+                // Deterministic pseudo-random variation across the 6 grass tiles in Sidewalks.png (x=0..192, y=288..320)
+                const uint32_t hash = static_cast<uint32_t>(gx * 73856093 ^ gy * 19349663);
+                const int variant = static_cast<int>(hash % 6);
+
+                const Rectangle src{ static_cast<float>(variant * 32), 288.0f, 32.0f, 32.0f };
+                const Vector2 pos{ x, y };
+                DrawTextureRec(camera_->sidewalks_tex, src, pos, WHITE);
+            }
+        }
+    } else {
+        // Fallback procedural coordinate grid
+        constexpr float kGridSpacing = 100.0f;
+        constexpr float kExtentMin   = -300.0f;
+        constexpr float kExtentMax   = 1200.0f;
+
+        for (float x = kExtentMin; x <= kExtentMax; x += kGridSpacing) {
+            DrawLineV({ x, kExtentMin }, { x, kExtentMax }, pal::grid_line);
+        }
+        for (float y = kExtentMin; y <= kExtentMax; y += kGridSpacing) {
+            DrawLineV({ kExtentMin, y }, { kExtentMax, y }, pal::grid_line);
+        }
     }
 }
 
@@ -278,25 +370,75 @@ void Renderer::draw_network(const RoadNetwork& network) {
 
         const float road_w = static_cast<float>(road.lane_count()) * kLaneWidthPx;
 
-        // Outer curb line
-        DrawLineEx(a, b, road_w + 3.0f, pal::road_edge);
-        // Main asphalt surface
-        DrawLineEx(a, b, road_w - 1.0f, pal::road_fill);
+        if (camera_->road_tex.id > 0) {
+            // Render road tiles once per bidirectional pair
+            if (static_cast<uint32_t>(road.from) < static_cast<uint32_t>(road.to)) {
+                const float dx = b.x - a.x;
+                const float dy = b.y - a.y;
+                const float len = std::hypot(dx, dy);
+                if (len > 0.0f) {
+                    const float ux = dx / len;
+                    const float uy = dy / len;
+                    const float angle_deg = std::atan2(dy, dx) * (180.0f / 3.141592653589793f);
 
-        // Dashed centre divider (draw once per bidirectional pair)
-        if (static_cast<uint32_t>(road.from) < static_cast<uint32_t>(road.to)) {
-            const float len = std::hypot(b.x - a.x, b.y - a.y);
-            if (len > 0.0f) {
-                const float dx = (b.x - a.x) / len;
-                const float dy = (b.y - a.y) / len;
-                constexpr float dash = 8.0f;
-                constexpr float gap  = 8.0f;
-                float t = gap;
-                while (t + dash < len) {
-                    DrawLineEx({ a.x + dx * t,          a.y + dy * t },
-                               { a.x + dx * (t + dash), a.y + dy * (t + dash) },
-                               1.5f, pal::lane_divider);
-                    t += dash + gap;
+                    constexpr float kJuncHalf = 16.0f; // Half-width of 32x32 junction box
+                    constexpr float kCwLen    = 32.0f; // Crosswalk tile length
+                    constexpr float kTileLen  = 32.0f; // Road tile length
+
+                    const bool has_cw_a = (network.incoming_roads(road.from).size() > 1 && len >= 96.0f);
+                    const bool has_cw_b = (network.incoming_roads(road.to).size() > 1 && len >= 96.0f);
+
+                    const float road_start = kJuncHalf + (has_cw_a ? kCwLen : 0.0f);
+                    const float road_end   = len - kJuncHalf - (has_cw_b ? kCwLen : 0.0f);
+
+                    // Crosswalk entering junction A (facing backwards towards A)
+                    if (has_cw_a) {
+                        const Vector2 pos{ a.x + ux * kJuncHalf, a.y + uy * kJuncHalf };
+                        const Rectangle src_cw{ 32.0f, 96.0f, -32.0f, 32.0f };
+                        const Rectangle dst_cw{ pos.x, pos.y, 32.0f, 32.0f };
+                        DrawTexturePro(camera_->road_tex, src_cw, dst_cw, { 0.0f, 16.0f }, angle_deg, WHITE);
+                    }
+
+                    // Tiled straight road segments with asphalt and dashed center lane divider
+                    float d = road_start;
+                    while (d < road_end) {
+                        const float step = std::min(kTileLen, road_end - d);
+                        const Vector2 pos{ a.x + ux * d, a.y + uy * d };
+                        const Rectangle src_r{ 0.0f, 96.0f, step, 32.0f };
+                        const Rectangle dst_r{ pos.x, pos.y, step, 32.0f };
+                        DrawTexturePro(camera_->road_tex, src_r, dst_r, { 0.0f, 16.0f }, angle_deg, WHITE);
+                        d += step;
+                    }
+
+                    // Crosswalk entering junction B (facing forward towards B)
+                    if (has_cw_b) {
+                        const Vector2 pos{ a.x + ux * (len - kJuncHalf - kCwLen), a.y + uy * (len - kJuncHalf - kCwLen) };
+                        const Rectangle src_cw{ 32.0f, 96.0f, 32.0f, 32.0f };
+                        const Rectangle dst_cw{ pos.x, pos.y, 32.0f, 32.0f };
+                        DrawTexturePro(camera_->road_tex, src_cw, dst_cw, { 0.0f, 16.0f }, angle_deg, WHITE);
+                    }
+                }
+            }
+        } else {
+            // Procedural fallback
+            DrawLineEx(a, b, road_w + 3.0f, pal::road_edge);
+            DrawLineEx(a, b, road_w - 1.0f, pal::road_fill);
+
+            // Dashed centre divider (draw once per bidirectional pair)
+            if (static_cast<uint32_t>(road.from) < static_cast<uint32_t>(road.to)) {
+                const float len = std::hypot(b.x - a.x, b.y - a.y);
+                if (len > 0.0f) {
+                    const float dx = (b.x - a.x) / len;
+                    const float dy = (b.y - a.y) / len;
+                    constexpr float dash = 8.0f;
+                    constexpr float gap  = 8.0f;
+                    float t = gap;
+                    while (t + dash < len) {
+                        DrawLineEx({ a.x + dx * t,          a.y + dy * t },
+                                   { a.x + dx * (t + dash), a.y + dy * (t + dash) },
+                                   1.5f, pal::lane_divider);
+                        t += dash + gap;
+                    }
                 }
             }
         }
@@ -340,13 +482,21 @@ void Renderer::draw_network(const RoadNetwork& network) {
         const float cx = node.position.x;
         const float cy = node.position.y;
 
-        // Junction apron (blends with road asphalt, preventing protruding edges)
-        DrawCircleV({ cx, cy }, kIntersectionRadius, pal::node_apron);
-        DrawCircleLinesV({ cx, cy }, kIntersectionRadius, pal::road_edge);
+        if (camera_->road_tex.id > 0) {
+            // Textured junction center square from UpdatedDarkRoad.png (32x32)
+            const Rectangle junc_src{ 64.0f, 96.0f, 32.0f, 32.0f };
+            const Rectangle junc_dest{ cx, cy, 32.0f, 32.0f };
+            const Vector2 junc_origin{ 16.0f, 16.0f };
+            DrawTexturePro(camera_->road_tex, junc_src, junc_dest, junc_origin, 0.0f, WHITE);
+        } else {
+            // Junction apron (blends with road asphalt, preventing protruding edges)
+            DrawCircleV({ cx, cy }, kIntersectionRadius, pal::node_apron);
+            DrawCircleLinesV({ cx, cy }, kIntersectionRadius, pal::road_edge);
 
-        // Technical junction core disc
-        DrawCircleV({ cx, cy }, 5.5f, pal::node_core);
-        DrawCircleLinesV({ cx, cy }, 5.5f, pal::node_border);
+            // Technical junction core disc
+            DrawCircleV({ cx, cy }, 5.5f, pal::node_core);
+            DrawCircleLinesV({ cx, cy }, 5.5f, pal::node_border);
+        }
 
         // Debug: Show intersection IDs (OFF by default)
         if (debug_flags_.show_intersection_ids) {
@@ -709,6 +859,10 @@ void Renderer::draw_simulation_metrics(const SimState& state) {
         ImGui::TableSetColumnIndex(1); ImGui::Text("%.3f s", cfg_.dt_seconds);
 
         ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Sim FPS");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f", state.simulation_fps);
+
+        ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0); ImGui::Text("Render FPS");
         ImGui::TableSetColumnIndex(1); ImGui::Text("%d", GetFPS());
 
@@ -767,8 +921,131 @@ void Renderer::draw_simulation_panel(
 }
 
 void Renderer::draw_signal_status(
-    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
-    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC SIGNALS (BASELINE)");
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+    SignalControllerType                                               controller_type,
+    SimControlAction&                                                  action) {
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "SIGNAL CONTROLLER MODE");
+    ImGui::Separator();
+
+    const char* ctrl_labels[] = { "Fixed", "Adaptive", "RL", "Coord" };
+    const SignalControllerType ctrl_types[] = {
+        SignalControllerType::FixedTime,
+        SignalControllerType::Adaptive,
+        SignalControllerType::ReinforcementLearning,
+        SignalControllerType::Coordinated
+    };
+
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float btn_w   = (avail_w - 3.0f * spacing) / 4.0f;
+
+    for (int i = 0; i < 4; ++i) {
+        if (i > 0) ImGui::SameLine();
+        const bool is_active = (controller_type == ctrl_types[i]);
+        if (is_active) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.60f, 0.80f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.70f, 0.90f, 1.00f));
+        }
+
+        if (ImGui::Button(ctrl_labels[i], ImVec2(btn_w, 24.0f))) {
+            action.request_controller_type = ctrl_types[i];
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Switch to %s signal controller", ctrl_labels[i]);
+        }
+
+        if (is_active) {
+            ImGui::PopStyleColor(2);
+        }
+    }
+
+    // RL Telemetry & Aggregated Metrics
+    const RLController* first_rlc = nullptr;
+    float avg_latency_us = 0.0f;
+    float total_dps = 0.0f;
+    uint32_t rl_count = 0;
+    bool any_model_loaded = false;
+
+    // Coordinated Telemetry
+    uint32_t total_wave_ext = 0;
+    uint32_t total_spill_mit = 0;
+    uint32_t coord_count = 0;
+
+    if (signal_controllers) {
+        for (const auto& [id, ctrl] : *signal_controllers) {
+            if (const auto* rlc = ctrl.as<RLController>()) {
+                if (!first_rlc) first_rlc = rlc;
+                avg_latency_us += rlc->average_inference_latency_us();
+                total_dps += rlc->decisions_per_second();
+                if (rlc->is_model_loaded()) any_model_loaded = true;
+                rl_count++;
+            } else if (const auto* cc = ctrl.as<CoordinatedController>()) {
+                total_wave_ext += cc->green_wave_extensions_count();
+                total_spill_mit += cc->spillback_mitigations_count();
+                coord_count++;
+            }
+        }
+    }
+
+    if (controller_type == SignalControllerType::Coordinated || coord_count > 0) {
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "NETWORK COORDINATION TELEMETRY");
+        ImGui::Separator();
+
+        if (ImGui::BeginTable("CoordStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("Green Waves Extended");
+            ImGui::TableSetColumnIndex(1); ImGui::TextColored(ImVec4(0.20f, 0.90f, 0.95f, 1.00f), "%u", total_wave_ext);
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("Spillback Mitigations");
+            ImGui::TableSetColumnIndex(1); ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.35f, 1.00f), "%u", total_spill_mit);
+
+            ImGui::EndTable();
+        }
+    }
+
+    if (controller_type == SignalControllerType::ReinforcementLearning || rl_count > 0) {
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "RL POLICY INFERENCE (DQN)");
+        ImGui::Separator();
+
+        if (ImGui::BeginTable("RLStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("AI Model");
+            ImGui::TableSetColumnIndex(1);
+            if (any_model_loaded) {
+                ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "LOADED");
+                if (ImGui::IsItemHovered() && first_rlc) {
+                    ImGui::SetTooltip("%s", first_rlc->model_path().c_str());
+                }
+            } else {
+                ImGui::TextColored(ImVec4(1.00f, 0.70f, 0.20f, 1.00f), "NO MODEL (Fallback)");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Running in safe heuristic fallback mode (no AI model loaded)");
+                }
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("Inference Latency");
+            ImGui::TableSetColumnIndex(1);
+            if (first_rlc && first_rlc->last_inference_latency_us() > 0.0f) {
+                const float mean_lat = (rl_count > 0) ? (avg_latency_us / static_cast<float>(rl_count)) : 0.0f;
+                ImGui::Text("%.1f us (avg: %.1f us)", first_rlc->last_inference_latency_us(), mean_lat);
+            } else {
+                ImGui::TextDisabled("N/A");
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("Decisions / Sec");
+            ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f /s", total_dps);
+
+            ImGui::EndTable();
+        }
+    }
+
+    ImGui::Spacing();
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC SIGNALS");
     ImGui::Separator();
 
     if (!signal_controllers || signal_controllers->empty()) {
@@ -784,11 +1061,12 @@ void Renderer::draw_signal_status(
     std::sort(sorted.begin(), sorted.end(),
               [](const auto& a, const auto& b) { return a.first < b.first; });
 
-    if (ImGui::BeginTable("SignalControllersTable", 3, ImGuiTableFlags_SizingFixedFit)) {
+    if (ImGui::BeginTable("SignalControllersTable", 4, ImGuiTableFlags_SizingFixedFit)) {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0); ImGui::Text("Junction");
-        ImGui::TableSetColumnIndex(1); ImGui::Text("Signal State");
-        ImGui::TableSetColumnIndex(2); ImGui::Text("Remaining");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("Mode");
+        ImGui::TableSetColumnIndex(2); ImGui::Text("Signal State");
+        ImGui::TableSetColumnIndex(3); ImGui::Text("Remaining");
 
         for (const auto& [inter_id, controller] : sorted) {
             ImGui::TableNextRow();
@@ -796,6 +1074,68 @@ void Renderer::draw_signal_status(
             ImGui::Text("I-%u", static_cast<uint32_t>(inter_id));
 
             ImGui::TableSetColumnIndex(1);
+            if (const auto* rlc = controller->as<RLController>()) {
+                if (rlc->last_action() == 1) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.25f, 1.00f), "RL [SWT]");
+                } else {
+                    ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "RL [HOLD]");
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Action: %s | Q(Maintain)=%.2f, Q(Switch)=%.2f | Latency: %.1f us",
+                                      rlc->last_action() == 1 ? "Switch" : "Maintain",
+                                      rlc->last_decision().q_maintain,
+                                      rlc->last_decision().q_switch,
+                                      rlc->last_inference_latency_us());
+                }
+            } else if (const auto* ac = controller->as<AdaptiveController>()) {
+                switch (ac->last_decision()) {
+                    case AdaptiveDecision::ExtendGreen:
+                        ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "ADAPT [EXT]");
+                        break;
+                    case AdaptiveDecision::ShortenPhase:
+                        ImGui::TextColored(ImVec4(1.00f, 0.65f, 0.20f, 1.00f), "ADAPT [GAP]");
+                        break;
+                    case AdaptiveDecision::SwitchPhase:
+                        ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.25f, 1.00f), "ADAPT [SWT]");
+                        break;
+                    case AdaptiveDecision::Hold:
+                    default:
+                        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "ADAPTIVE");
+                        break;
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", std::string(ac->last_decision_reason()).c_str());
+                }
+            } else if (const auto* cc = controller->as<CoordinatedController>()) {
+                switch (cc->last_decision()) {
+                    case CoordinatedDecision::ExtendGreenWave:
+                        ImGui::TextColored(ImVec4(0.20f, 0.90f, 0.95f, 1.00f), "COORD [PLT]");
+                        break;
+                    case CoordinatedDecision::ExtendGreenLocal:
+                        ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "COORD [EXT]");
+                        break;
+                    case CoordinatedDecision::MitigateSpillback:
+                        ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.35f, 1.00f), "COORD [SPL]");
+                        break;
+                    case CoordinatedDecision::ShortenPhase:
+                        ImGui::TextColored(ImVec4(1.00f, 0.65f, 0.20f, 1.00f), "COORD [GAP]");
+                        break;
+                    case CoordinatedDecision::SwitchPhase:
+                        ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.25f, 1.00f), "COORD [SWT]");
+                        break;
+                    case CoordinatedDecision::Hold:
+                    default:
+                        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "COORD [HLD]");
+                        break;
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", std::string(cc->last_decision_reason()).c_str());
+                }
+            } else {
+                ImGui::TextDisabled("FixedTime");
+            }
+
+            ImGui::TableSetColumnIndex(2);
             switch (controller->current_stage()) {
                 case PhaseStage::Green:
                     ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "GREEN");
@@ -808,7 +1148,7 @@ void Renderer::draw_signal_status(
                     break;
             }
 
-            ImGui::TableSetColumnIndex(2);
+            ImGui::TableSetColumnIndex(3);
             ImGui::Text("%.1f s", controller->stage_remaining_s());
         }
         ImGui::EndTable();
@@ -925,21 +1265,24 @@ void Renderer::draw_traffic_panel(
     const SimState&                                                    state,
     const RoadNetwork&                                                 network,
     const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+    SignalControllerType                                               controller_type,
+    RoutingStrategyType                                                active_routing,
     SimControlAction&                                                  action) {
     const float screen_w = static_cast<float>(GetScreenWidth());
     const float screen_h = static_cast<float>(GetScreenHeight());
 
-    const float panel_w     = std::clamp(screen_w * 0.20f, 280.0f, 330.0f);
+    const float panel_w     = std::clamp(screen_w * 0.22f, 310.0f, 360.0f);
     const float margin_x    = (screen_w < 1000.0f) ? 12.0f : 20.0f;
-    const float min_panel_w = 260.0f;
-    const float max_panel_w = std::min(420.0f, screen_w * 0.35f);
+    const float min_panel_w = 280.0f;
+    const float max_panel_w = std::min(450.0f, screen_w * 0.35f);
     const float max_panel_h = std::max(200.0f, screen_h - 50.0f);
+    const float default_h   = std::min(max_panel_h, 820.0f);
 
     const float init_x = std::max(margin_x + panel_w + 40.0f, screen_w - panel_w - margin_x);
-    const float init_y = std::max(20.0f, (screen_h - 26.0f - 680.0f) * 0.5f);
+    const float init_y = std::max(20.0f, (screen_h - 26.0f - default_h) * 0.5f);
 
     ImGui::SetNextWindowPos({ init_x, init_y }, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({ panel_w, 680.0f }, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({ panel_w, default_h }, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(min_panel_w, 150.0f),
         ImVec2(max_panel_w, max_panel_h));
@@ -955,22 +1298,70 @@ void Renderer::draw_traffic_panel(
         draw_traffic_information(state, network, action);
 
         ImGui::Spacing();
+        if (ImGui::CollapsingHeader("ROUTING ENGINE", ImGuiTreeNodeFlags_DefaultOpen)) {
+            draw_routing_strategy(active_routing, action);
+        }
+
+        ImGui::Spacing();
         if (ImGui::CollapsingHeader("TRAFFIC SIGNALS", ImGuiTreeNodeFlags_DefaultOpen)) {
-            draw_signal_status(signal_controllers);
+            draw_signal_status(signal_controllers, controller_type, action);
         }
     }
     ImGui::End();
+}
+
+void Renderer::draw_routing_strategy(
+    RoutingStrategyType active_routing,
+    SimControlAction&   action) {
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "ROUTING STRATEGY MODE");
+    ImGui::Separator();
+
+    const char* route_labels[] = { "Static (Dist)", "Traffic-Aware" };
+    const RoutingStrategyType route_types[] = {
+        RoutingStrategyType::Static,
+        RoutingStrategyType::TrafficAware
+    };
+
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float btn_w   = (avail_w - spacing) / 2.0f;
+
+    for (int i = 0; i < 2; ++i) {
+        if (i > 0) ImGui::SameLine();
+        const bool is_active = (active_routing == route_types[i]);
+        if (is_active) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.65f, 0.40f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.75f, 0.45f, 1.00f));
+        }
+
+        if (ImGui::Button(route_labels[i], ImVec2(btn_w, 24.0f))) {
+            action.request_routing_strategy = route_types[i];
+        }
+        if (ImGui::IsItemHovered()) {
+            if (i == 0) {
+                ImGui::SetTooltip("Static routing: based strictly on shortest road distance");
+            } else {
+                ImGui::SetTooltip("Traffic-aware routing: distance + congestion penalty + predicted delay");
+            }
+        }
+
+        if (is_active) {
+            ImGui::PopStyleColor(2);
+        }
+    }
 }
 
 SimControlAction Renderer::draw_imgui(
     const SimState&                                                    state,
     const RoadNetwork&                                                 network,
     float                                                              current_speed_scale,
-    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+    SignalControllerType                                               controller_type,
+    RoutingStrategyType                                                active_routing) {
     SimControlAction action;
 
     draw_simulation_panel(state, network, current_speed_scale, action);
-    draw_traffic_panel(state, network, signal_controllers, action);
+    draw_traffic_panel(state, network, signal_controllers, controller_type, active_routing, action);
 
     return action;
 }

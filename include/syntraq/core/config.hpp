@@ -8,6 +8,8 @@
 // Deliberately simple — not a large framework.
 //
 
+#include "syntraq/signals/signal_controller_interface.hpp"
+
 #include <cstdint>
 #include <string>
 
@@ -21,6 +23,13 @@ enum class TrafficScenario : uint8_t {
     High,
     RushHour,
     Custom,
+};
+
+// ── Routing Strategies ───────────────────────────────────────
+
+enum class RoutingStrategyType : uint8_t {
+    Static,
+    TrafficAware,
 };
 
 struct TrafficScenarioConfig {
@@ -83,18 +92,22 @@ struct Config {
     bool     headless         { false };  ///< Skip window / rendering when true
 
     // ── Traffic Behavior & Scenario ──────────────────────────────
-    TrafficScenario scenario                { TrafficScenario::Medium };
-    float           vehicle_spawn_interval_s{ 2.0f };
-    uint32_t        max_vehicles            { 40 };
+    TrafficScenario     scenario                { TrafficScenario::Medium };
+    float               vehicle_spawn_interval_s{ 2.0f };
+    uint32_t            max_vehicles            { 40 };
+    RoutingStrategyType routing_strategy        { RoutingStrategyType::Static }; ///< Static (distance) or TrafficAware
 
     // ── Scenario File (future use) ───────────────────────────────
     std::string scenario_file{ "configs/default_scenario.json" };
 
     // ── Traffic Signals ──────────────────────────────────────────
-    bool  enable_traffic_signals   { true };   ///< Enable baseline traffic signals
-    float default_green_duration_s { 10.0f };  ///< Fixed-time green stage duration
-    float default_yellow_duration_s{  3.0f };  ///< Fixed-time yellow stage duration
-    float default_all_red_duration_s{ 2.0f };  ///< Interphase all-red clearance duration
+    bool                 enable_traffic_signals    { true };   ///< Enable traffic signals
+    SignalControllerType signal_controller_type    { SignalControllerType::FixedTime }; ///< FixedTime, Adaptive, or RL
+    float                default_green_duration_s  { 10.0f };  ///< Fixed-time green stage duration
+    float                default_yellow_duration_s {  3.0f };  ///< Fixed-time yellow stage duration
+    float                default_all_red_duration_s{  2.0f };  ///< Interphase all-red clearance duration
+    std::string          rl_model_path             { "models/traffic_signal_dqn.onnx" }; ///< ONNX policy path
+    bool                 enable_rl_model           { true };   ///< Whether to attempt loading ONNX model for RL
 
     /// Load from a JSON file; returns default config on failure.
     static Config from_file(const std::string& path);

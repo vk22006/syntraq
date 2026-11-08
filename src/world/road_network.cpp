@@ -192,4 +192,42 @@ RoadNetwork make_test_map(Vec2 origin, float spacing_px) {
     return net;
 }
 
+RoadNetwork make_single_intersection_map(Vec2     center_pos,
+                                         float    arm_length_m,
+                                         float    speed_limit_mps,
+                                         uint32_t num_lanes) {
+    RoadNetwork net;
+
+    // Center 4-way intersection (ID 0)
+    const IntersectionId center = net.add_intersection(center_pos, "Intersection-Center");
+
+    // Peripheral entry/exit nodes
+    const IntersectionId north = net.add_intersection(
+        Vec2{ center_pos.x, center_pos.y - arm_length_m }, "Node-North");
+    const IntersectionId south = net.add_intersection(
+        Vec2{ center_pos.x, center_pos.y + arm_length_m }, "Node-South");
+    const IntersectionId west = net.add_intersection(
+        Vec2{ center_pos.x - arm_length_m, center_pos.y }, "Node-West");
+    const IntersectionId east = net.add_intersection(
+        Vec2{ center_pos.x + arm_length_m, center_pos.y }, "Node-East");
+
+    // North approach & exit
+    net.add_road(north, center, arm_length_m, speed_limit_mps, num_lanes, "North Approach (In)");
+    net.add_road(center, north, arm_length_m, speed_limit_mps, num_lanes, "North Exit (Out)");
+
+    // South approach & exit
+    net.add_road(south, center, arm_length_m, speed_limit_mps, num_lanes, "South Approach (In)");
+    net.add_road(center, south, arm_length_m, speed_limit_mps, num_lanes, "South Exit (Out)");
+
+    // West approach & exit
+    net.add_road(west, center, arm_length_m, speed_limit_mps, num_lanes, "West Approach (In)");
+    net.add_road(center, west, arm_length_m, speed_limit_mps, num_lanes, "West Exit (Out)");
+
+    // East approach & exit
+    net.add_road(east, center, arm_length_m, speed_limit_mps, num_lanes, "East Approach (In)");
+    net.add_road(center, east, arm_length_m, speed_limit_mps, num_lanes, "East Exit (Out)");
+
+    return net;
+}
+
 } // namespace syntraq

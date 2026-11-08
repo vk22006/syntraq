@@ -119,4 +119,13 @@ private:
 RoadNetwork make_test_map(Vec2     origin     = { 160.f, 120.f },
                           float    spacing_px = 180.f);
 
+/// Build a canonical isolated single 4-way intersection network with 4 incoming approaches
+/// and 4 outgoing exit roads for focused intersection control and RL experiments.
+/// Center intersection is at center_pos. Surrounding entry/exit nodes are placed at
+/// arm_length_m distance along North, South, West, and East axes.
+RoadNetwork make_single_intersection_map(Vec2     center_pos      = { 300.0f, 300.0f },
+                                         float    arm_length_m    = 200.0f,
+                                         float    speed_limit_mps = 13.89f,
+                                         uint32_t num_lanes       = 2);
+
 } // namespace syntraq

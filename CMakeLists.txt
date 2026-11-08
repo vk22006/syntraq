@@ -1,12 +1,18 @@
 cmake_minimum_required(VERSION 3.25)
 project(SyntraQ VERSION 0.1.0 LANGUAGES CXX)
 
+if(POLICY CMP0141)
+  cmake_policy(SET CMP0141 NEW)
+  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+endif()
+
 # ---------------------------------------------------------------------------
 # C++20 globally
 # ---------------------------------------------------------------------------
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # ---------------------------------------------------------------------------
 # Build type default
@@ -181,19 +187,30 @@ add_library(syntraq_core STATIC
     src/vehicles/vehicle_spawner.cpp
     src/vehicles/route_provider.cpp
     src/signals/traffic_light.cpp
+    src/signals/fixed_time_controller.cpp
+    src/signals/adaptive_controller.cpp
+    src/signals/rl_signal_controller.cpp
+    src/signals/rl_controller.cpp
+    src/signals/coordinated_controller.cpp
+    src/signals/network_coordination_manager.cpp
     src/signals/traffic_signal_controller.cpp
     src/routing/dijkstra_router.cpp
     src/routing/astar_router.cpp
+    src/routing/static_routing.cpp
+    src/routing/traffic_aware_routing.cpp
     src/routing/graph_generator.cpp
     src/metrics/traffic_metrics.cpp
     src/metrics/traffic_data_collector.cpp
     src/ai/traffic_feature_scaler.cpp
     src/ai/traffic_predictor.cpp
+    src/ai/traffic_signal_env.cpp
+    src/ai/rl_policy_inference.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
 )
 target_link_libraries(syntraq_core PUBLIC onnxruntime)
+set_target_properties(syntraq_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Warning flags for our own code
 target_compile_options(syntraq_core PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
@@ -244,6 +261,26 @@ if(WIN32 AND EXISTS "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
     )
 endif()
 
+# Copy assets folder to output directory
+if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
+    add_custom_command(TARGET syntraq POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:syntraq>/assets"
+        COMMENT "Copying assets directory to output directory"
+    )
+endif()
+
+# Copy models folder to output directory
+if(EXISTS "${CMAKE_SOURCE_DIR}/models")
+    add_custom_command(TARGET syntraq POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/models"
+            "$<TARGET_FILE_DIR:syntraq>/models"
+        COMMENT "Copying models directory to output directory"
+    )
+endif()
+
 # ---------------------------------------------------------------------------
 # Benchmarks
 # ---------------------------------------------------------------------------
@@ -264,12 +301,47 @@ target_compile_options(syntraq_experiments PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
 
+add_executable(syntraq_compare_controllers experiments/compare_controllers.cpp)
+target_link_libraries(syntraq_compare_controllers PRIVATE syntraq_core)
+target_compile_options(syntraq_compare_controllers PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
+add_executable(syntraq_compare_routing experiments/compare_routing.cpp)
+target_link_libraries(syntraq_compare_routing PRIVATE syntraq_core)
+target_compile_options(syntraq_compare_routing PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
+add_executable(syntraq_compare_network_coordination experiments/compare_network_coordination.cpp)
+target_link_libraries(syntraq_compare_network_coordination PRIVATE syntraq_core)
+target_compile_options(syntraq_compare_network_coordination PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
 # ---------------------------------------------------------------------------
 # Dataset Generator
 # ---------------------------------------------------------------------------
 add_executable(syntraq_generate_dataset experiments/generate_dataset.cpp)
 target_link_libraries(syntraq_generate_dataset PRIVATE syntraq_core)
 target_compile_options(syntraq_generate_dataset PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
+# ---------------------------------------------------------------------------
+# RL Environment C-API (Shared Library for Python ctypes integration)
+# ---------------------------------------------------------------------------
+add_library(syntraq_env_capi SHARED src/ai/env_c_api.cpp)
+target_include_directories(syntraq_env_capi PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(syntraq_env_capi PRIVATE syntraq_core)
+target_compile_definitions(syntraq_env_capi PRIVATE SYNTRAQ_ENV_EXPORTS)
+target_compile_options(syntraq_env_capi PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
