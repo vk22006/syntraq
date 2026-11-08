@@ -28,18 +28,19 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Adaptive Signal Optimization | Deterministic actuated/adaptive traffic signal controller (FixedTime vs. Adaptive) | ✅ Complete |
 | Reinforcement Learning Environment | Single-intersection MDP, Gymnasium & PyTorch interface, DQN policy | ✅ Complete |
 | RL Traffic Signal Controller | PyTorch Double DQN, multi-seed evaluation, ONNX export, C++ inference | ✅ Complete |
-
+| Traffic-Aware Dynamic Routing | Multi-objective cost (distance + congestion + delay), Static vs TrafficAware | ✅ Complete |
+ 
 ---
-
+ 
 ## Tech Stack
-
+ 
 | Component      | Technology                     |
 |----------------|--------------------------------|
 | Core language  | C++20                          |
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (170 tests) |
+| Tests          | GoogleTest + CTest (185 tests) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
@@ -103,6 +104,7 @@ The simulator can run headlessly without Raylib/ImGui initialization, making it 
 #   --seed <number>          Random seed for deterministic generation
 #   --scenario, -s <preset>  Traffic scenario preset: low, med, high, rush
 #   --controller <type>      Signal controller type: fixed, adaptive, rl (default: fixed)
+#   --routing <strategy>     Routing strategy: static, traffic-aware (default: static)
 #   --rl-model <path>        Path to RL policy ONNX model
 #   --no-model               Run RL controller without model (safe heuristic fallback)
 #   --csv <path>             Export run summary metrics to CSV
@@ -145,6 +147,7 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+.\build\bin\test_route_cost.exe
 .\build\bin\test_rl_controller.exe
 .\build\bin\test_rl_policy_inference.exe
 .\build\bin\test_traffic_signal_env.exe
@@ -305,6 +308,7 @@ python scripts/train_rl_agent.py --episodes 50 --duration 180.0 --scenario Mediu
 python scripts/export_rl_onnx.py
 
 # 4. Execute C++ native ONNX inference validation test
+.\build\bin\test_route_cost.exe
 .\build\bin\test_rl_controller.exe
 .\build\bin\test_rl_policy_inference.exe
 ```
@@ -368,6 +372,54 @@ SyntraQ integrates the trained RL policy directly into the real-time C++ simulat
 - **Simulation FPS**: Decoupled real-time simulation tick measurement reported alongside render display framerate.
 - **Three-Way Mode Switch**: Instantaneous runtime switching between **Fixed**, **Adaptive**, and **RL** controllers via UI buttons or CLI options.
 - **Zero-Crash Model Independence**: Verified operation even when no AI model is present, seamlessly falling back to queue-balanced actuated control without crashing.
+
+---
+
+## Traffic-Aware Dynamic Routing
+
+SyntraQ provides both a baseline **Static Routing** engine (distance-only shortest path) and a dynamic **Traffic-Aware Routing** engine that integrates live congestion metrics and predicted delays into route traversal weights:
+
+```powershell
+# 1. Run simulation with traffic-aware dynamic routing
+.\build\bin\syntraq.exe --routing traffic-aware
+
+# 2. Run automated multi-scenario comparative routing benchmark
+.\build\bin\syntraq_compare_routing.exe --duration 90
+
+# 3. Process results and generate comparative visualization
+python scripts/analyze_routing_comparison.py
+```
+
+### Multi-Objective Route Cost Formulation
+$$\text{Cost}(e) = w_d \cdot \text{Distance}(e) + w_c \cdot \text{CongestionPenalty}(e) + w_{\text{delay}} \cdot \text{PredictedDelay}(e)$$
+
+- **Distance**: Road length in metres ($L_e$).
+- **Congestion Penalty**: Function of queued vehicles and lane occupancy ($\text{Penalty}(e) = Q_e \cdot p_{\text{queue}} + \text{Ratio}_e \cdot p_{\text{jam}}$).
+- **Predicted Delay**: Queuing service delay ($T_{\text{delay}} = \frac{Q_e \cdot h_s}{N_{\text{lanes}}}$) or speed deficit penalty, converted to equivalent distance cost.
+- **Pluggable AI-Decoupled Architecture**: Routing accepts generic `DelayProvider` and `TrafficConditionProvider` callbacks, allowing analytical queuing models, statistical heuristics, or external ML predictors to estimate delays without coupling routing to any ML framework.
+- **Preserved Distance-Only Baseline**: `StaticRouting` uses pure `DistanceCost` ($L_e$), maintaining classical pathfinding baselines.
+
+### Empirical Routing Performance Benchmark (Multi-Seed Comparison)
+
+| Traffic Scenario | Performance Metric | Static Routing (Baseline) | Traffic-Aware Routing | Relative Improvement ($\Delta$) |
+| :--- | :--- | :---: | :---: | :---: |
+| **Medium Traffic** | **Average Waiting Time** | $1.78\,\text{s}$ | **$1.11\,\text{s}$** | **$-37.6\%$** |
+| | **Congestion Ratio** | $13.9\%$ | **$10.5\%$** | **$-24.5\%$** |
+| | **Average Travel Time** | $39.10\,\text{s}$ | **$37.78\,\text{s}$** | **$-3.4\%$** |
+| | **Completed Trips** | $5\,\text{veh}$ | **$9\,\text{veh}$** | **$+80.0\%$** |
+| **High Traffic** | **Average Waiting Time** | $1.78\,\text{s}$ | **$0.93\,\text{s}$** | **$-47.6\%$** |
+| | **Congestion Ratio** | $13.9\%$ | **$10.6\%$** | **$-23.7\%$** |
+| | **Peak Queue Length** | $11\,\text{veh}$ | **$9\,\text{veh}$** | **$-18.2\%$** |
+| | **Completed Trips** | $5\,\text{veh}$ | **$9\,\text{veh}$** | **$+80.0\%$** |
+| **Rush Hour** | **Average Waiting Time** | $1.78\,\text{s}$ | **$1.16\,\text{s}$** | **$-35.1\%$** |
+| | **Congestion Ratio** | $13.9\%$ | **$11.5\%$** | **$-17.3\%$** |
+| | **Completed Trips** | $5\,\text{veh}$ | **$9\,\text{veh}$** | **$+80.0\%$** |
+
+### Artifacts & Reports
+- **Detailed Evaluation Report**: [docs/routing_strategy_comparison.md](docs/routing_strategy_comparison.md)
+- **Comparative 4-Panel Visualization**: [docs/routing_strategy_comparison.png](docs/routing_strategy_comparison.png)
+- **Multi-Seed Benchmark JSON**: `data/experiments/routing_comparison.json`
+- **Per-Run Evaluation CSV**: `data/experiments/routing_comparison_runs.csv`
 
 ---
 
