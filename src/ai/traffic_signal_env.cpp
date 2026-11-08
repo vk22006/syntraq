@@ -3,6 +3,7 @@
 //
 
 #include "syntraq/ai/traffic_signal_env.hpp"
+#include "syntraq/signals/rl_controller.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -58,6 +59,9 @@ void TrafficSignalEnv::setup_simulation(uint32_t seed) {
     }
 
     rl_controller_ = existing_ctrl ? existing_ctrl->as<RLSignalController>() : nullptr;
+    if (auto* rlc = existing_ctrl ? existing_ctrl->as<RLController>() : nullptr) {
+        rlc->set_autonomous(false);
+    }
 
     // Cache phase road IDs
     phase_0_roads_.clear();
