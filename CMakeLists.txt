@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(SyntraQ VERSION 0.1.0 LANGUAGES CXX)
 
+if(POLICY CMP0141)
+  cmake_policy(SET CMP0141 NEW)
+  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+endif()
+
 # ---------------------------------------------------------------------------
 # C++20 globally
 # ---------------------------------------------------------------------------
@@ -184,6 +189,7 @@ add_library(syntraq_core STATIC
     src/signals/fixed_time_controller.cpp
     src/signals/adaptive_controller.cpp
     src/signals/rl_signal_controller.cpp
+    src/signals/rl_controller.cpp
     src/signals/traffic_signal_controller.cpp
     src/routing/dijkstra_router.cpp
     src/routing/astar_router.cpp
@@ -256,6 +262,16 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
             "${CMAKE_SOURCE_DIR}/assets"
             "$<TARGET_FILE_DIR:syntraq>/assets"
         COMMENT "Copying assets directory to output directory"
+    )
+endif()
+
+# Copy models folder to output directory
+if(EXISTS "${CMAKE_SOURCE_DIR}/models")
+    add_custom_command(TARGET syntraq POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/models"
+            "$<TARGET_FILE_DIR:syntraq>/models"
+        COMMENT "Copying models directory to output directory"
     )
 endif()
 
