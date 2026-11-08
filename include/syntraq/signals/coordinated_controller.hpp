@@ -185,12 +185,12 @@ private:
     IntersectionId                               intersection_id_{ kInvalidIntersectionId };
     std::vector<SignalPhase>                     phases_{};
     std::unordered_map<RoadId, TrafficLight>     lights_{};
+    CoordinatedControllerConfig                  config_{};
     size_t                                       current_phase_idx_{ 0 };
     PhaseStage                                   current_stage_{ PhaseStage::Green };
     float                                        stage_elapsed_s_{ 0.0f };
     float                                        current_stage_duration_{ 10.0f };
 
-    CoordinatedControllerConfig                  config_{};
     IntersectionLocalState                       local_state_{};
     std::vector<NeighborIntersectionState>       neighbor_states_{};
     CoordinatedDecision                          last_decision_{ CoordinatedDecision::Hold };
