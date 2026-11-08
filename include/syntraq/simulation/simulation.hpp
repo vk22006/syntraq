@@ -25,6 +25,7 @@
 namespace syntraq {
 
 class RLPolicyInference;
+class TrafficAwareRouting;
 
 /// Simulation state snapshot — what is known after each tick.
 struct SimState {
@@ -114,6 +115,10 @@ public:
     [[nodiscard]] const IRouteProvider& route_provider() const noexcept {
         return spawner_.route_provider();
     }
+    void set_routing_strategy_type(RoutingStrategyType type);
+    [[nodiscard]] RoutingStrategyType routing_strategy_type() const noexcept {
+        return cfg_.routing_strategy;
+    }
 
     // ── Traffic Metrics Subsystem ─────────────────────────────────────────
     [[nodiscard]] const TrafficMetricsCollector& metrics() const noexcept { return metrics_collector_; }
@@ -149,6 +154,7 @@ public:
 private:
     void despawn_arrived();
     void init_default_signals();
+    void init_default_routing();
 
     Config                cfg_;
     TrafficScenarioConfig scenario_cfg_;
@@ -167,8 +173,9 @@ private:
     std::function<RoadNetwork()> network_factory_{};
     std::vector<IntersectionId>  allowed_origins_{};
     std::vector<IntersectionId>  allowed_destinations_{};
-    std::shared_ptr<RLPolicyInference> shared_rl_policy_{ nullptr };
-    float                        real_time_window_{ 0.0f };
+    std::shared_ptr<RLPolicyInference>  shared_rl_policy_{ nullptr };
+    std::shared_ptr<TrafficAwareRouting> traffic_aware_router_{ nullptr };
+    float                               real_time_window_{ 0.0f };
     uint32_t                     ticks_in_window_{ 0 };
 };
 
