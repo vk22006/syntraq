@@ -23,10 +23,13 @@ class RoadNetwork;
 // ── RLControllerConfig ───────────────────────────────────────────────────────
 
 struct RLControllerConfig {
-    float min_green_s {  4.0f }; ///< Minimum green time before a switch can be initiated (safety)
-    float max_green_s { 45.0f }; ///< Maximum green cap before failsafe switch
-    float yellow_s    {  3.0f }; ///< Yellow clearance interval
-    float all_red_s   {  2.0f }; ///< All-red clearance interval
+    float       min_green_s       {  4.0f }; ///< Minimum green time before a switch can be initiated (safety)
+    float       max_green_s       { 45.0f }; ///< Maximum green cap before failsafe switch
+    float       yellow_s          {  3.0f }; ///< Yellow clearance interval
+    float       all_red_s         {  2.0f }; ///< All-red clearance interval
+    float       step_interval_s   {  1.0f }; ///< Action decision step interval (seconds)
+    std::string model_path        { "models/traffic_signal_dqn.onnx" }; ///< ONNX policy model path
+    bool        load_model_on_init{  true }; ///< Whether to attempt loading ONNX model on init
 };
 
 // ── RLSignalController ───────────────────────────────────────────────────────
