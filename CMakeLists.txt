@@ -12,6 +12,7 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # ---------------------------------------------------------------------------
 # Build type default
@@ -209,6 +210,7 @@ target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
 )
 target_link_libraries(syntraq_core PUBLIC onnxruntime)
+set_target_properties(syntraq_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Warning flags for our own code
 target_compile_options(syntraq_core PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
