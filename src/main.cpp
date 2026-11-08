@@ -28,6 +28,8 @@ int main(int argc, char* argv[]) {
     std::optional<uint32_t> cli_seed;
     std::optional<syntraq::TrafficScenario> cli_scenario;
     std::optional<syntraq::SignalControllerType> cli_controller;
+    std::string cli_rl_model;
+    bool cli_no_model = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -68,7 +70,13 @@ int main(int argc, char* argv[]) {
                 cli_controller = syntraq::SignalControllerType::Adaptive;
             } else if (ct == "fixed" || ct == "Fixed" || ct == "fixedtime" || ct == "FixedTime") {
                 cli_controller = syntraq::SignalControllerType::FixedTime;
+            } else if (ct == "rl" || ct == "RL" || ct == "reinforcement" || ct == "ReinforcementLearning") {
+                cli_controller = syntraq::SignalControllerType::ReinforcementLearning;
             }
+        } else if (arg == "--rl-model" && i + 1 < argc) {
+            cli_rl_model = argv[++i];
+        } else if (arg == "--no-model" || arg == "--no-rl-model") {
+            cli_no_model = true;
         } else if (arg.rfind(".json") != std::string::npos) {
             cfgPath = arg;
         }
@@ -95,6 +103,12 @@ int main(int argc, char* argv[]) {
     }
     if (cli_controller.has_value()) {
         cfg.signal_controller_type = *cli_controller;
+    }
+    if (!cli_rl_model.empty()) {
+        cfg.rl_model_path = cli_rl_model;
+    }
+    if (cli_no_model) {
+        cfg.enable_rl_model = false;
     }
 
     // ── Headless mode ────────────────────────────────────────────────────
@@ -172,7 +186,8 @@ int main(int argc, char* argv[]) {
                                                   sim.network(),
                                                   sim.vehicles(),
                                                   sim.time_scale(),
-                                                  &sim.signal_controllers());
+                                                  &sim.signal_controllers(),
+                                                  sim.signal_controller_type());
 
         if (action.request_pause_toggle) {
             sim.set_paused(!sim.is_paused());
@@ -185,6 +200,9 @@ int main(int argc, char* argv[]) {
         }
         if (action.request_scenario.has_value()) {
             sim.set_scenario(*action.request_scenario);
+        }
+        if (action.request_controller_type.has_value()) {
+            sim.set_signal_controller_type(*action.request_controller_type);
         }
 
         frame_count++;
