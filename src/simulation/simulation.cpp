@@ -5,6 +5,7 @@
 #include "syntraq/simulation/simulation.hpp"
 #include "syntraq/routing/static_routing.hpp"
 #include "syntraq/routing/traffic_aware_routing.hpp"
+#include "syntraq/signals/coordinated_controller.hpp"
 #include "syntraq/signals/rl_controller.hpp"
 #include "syntraq/world/road_network.hpp"
 
@@ -81,6 +82,15 @@ void Simulation::init_default_signals() {
                     }
                 }
                 c = TrafficSignalController::make_rl(network_, id, rl_cfg, shared_rl_policy_);
+            } else if (cfg_.signal_controller_type == SignalControllerType::Coordinated) {
+                CoordinatedControllerConfig coord_cfg;
+                coord_cfg.nominal_green_s = cfg_.default_green_duration_s;
+                c = TrafficSignalController::make_coordinated(
+                    network_,
+                    id,
+                    coord_cfg,
+                    cfg_.default_yellow_duration_s,
+                    cfg_.default_all_red_duration_s);
             } else {
                 c = TrafficSignalController::make_fixed_time(
                     network_,
@@ -94,6 +104,7 @@ void Simulation::init_default_signals() {
             }
         }
     }
+    coordination_manager_.build_topology(network_, signal_controllers_);
 }
 
 void Simulation::tick() {
@@ -111,6 +122,9 @@ void Simulation::tick() {
             }
         }
     }
+
+    // ── Exchange network-level coordination information among neighboring signals ──
+    coordination_manager_.exchange_coordination_states(network_, signal_controllers_, road_queues, road_max_waits);
 
     for (auto& [id, controller] : signal_controllers_) {
         controller.observe_traffic(road_queues, road_max_waits);
@@ -240,6 +254,7 @@ void Simulation::reset() {
     for (auto& [id, controller] : signal_controllers_) {
         controller.reset();
     }
+    coordination_manager_.build_topology(network_, signal_controllers_);
     metrics_collector_.reset();
     metrics_collector_.set_scenario(cfg_.scenario, scenario_cfg_.name);
     metrics_collector_.set_seed(scenario_cfg_.seed);
