@@ -7,6 +7,7 @@
 
 #include "syntraq/rendering/renderer.hpp"
 #include "syntraq/signals/rl_controller.hpp"
+#include "syntraq/signals/coordinated_controller.hpp"
 
 // Third-party headers — isolated to this .cpp
 #include "raylib.h"
@@ -926,18 +927,19 @@ void Renderer::draw_signal_status(
     ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "SIGNAL CONTROLLER MODE");
     ImGui::Separator();
 
-    const char* ctrl_labels[] = { "Fixed", "Adaptive", "RL" };
+    const char* ctrl_labels[] = { "Fixed", "Adaptive", "RL", "Coord" };
     const SignalControllerType ctrl_types[] = {
         SignalControllerType::FixedTime,
         SignalControllerType::Adaptive,
-        SignalControllerType::ReinforcementLearning
+        SignalControllerType::ReinforcementLearning,
+        SignalControllerType::Coordinated
     };
 
     const float avail_w = ImGui::GetContentRegionAvail().x;
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    const float btn_w   = (avail_w - 2.0f * spacing) / 3.0f;
+    const float btn_w   = (avail_w - 3.0f * spacing) / 4.0f;
 
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 4; ++i) {
         if (i > 0) ImGui::SameLine();
         const bool is_active = (controller_type == ctrl_types[i]);
         if (is_active) {
@@ -964,6 +966,11 @@ void Renderer::draw_signal_status(
     uint32_t rl_count = 0;
     bool any_model_loaded = false;
 
+    // Coordinated Telemetry
+    uint32_t total_wave_ext = 0;
+    uint32_t total_spill_mit = 0;
+    uint32_t coord_count = 0;
+
     if (signal_controllers) {
         for (const auto& [id, ctrl] : *signal_controllers) {
             if (const auto* rlc = ctrl.as<RLController>()) {
@@ -972,7 +979,29 @@ void Renderer::draw_signal_status(
                 total_dps += rlc->decisions_per_second();
                 if (rlc->is_model_loaded()) any_model_loaded = true;
                 rl_count++;
+            } else if (const auto* cc = ctrl.as<CoordinatedController>()) {
+                total_wave_ext += cc->green_wave_extensions_count();
+                total_spill_mit += cc->spillback_mitigations_count();
+                coord_count++;
             }
+        }
+    }
+
+    if (controller_type == SignalControllerType::Coordinated || coord_count > 0) {
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "NETWORK COORDINATION TELEMETRY");
+        ImGui::Separator();
+
+        if (ImGui::BeginTable("CoordStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("Green Waves Extended");
+            ImGui::TableSetColumnIndex(1); ImGui::TextColored(ImVec4(0.20f, 0.90f, 0.95f, 1.00f), "%u", total_wave_ext);
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("Spillback Mitigations");
+            ImGui::TableSetColumnIndex(1); ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.35f, 1.00f), "%u", total_spill_mit);
+
+            ImGui::EndTable();
         }
     }
 
@@ -1076,6 +1105,31 @@ void Renderer::draw_signal_status(
                 }
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("%s", std::string(ac->last_decision_reason()).c_str());
+                }
+            } else if (const auto* cc = controller->as<CoordinatedController>()) {
+                switch (cc->last_decision()) {
+                    case CoordinatedDecision::ExtendGreenWave:
+                        ImGui::TextColored(ImVec4(0.20f, 0.90f, 0.95f, 1.00f), "COORD [PLT]");
+                        break;
+                    case CoordinatedDecision::ExtendGreenLocal:
+                        ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "COORD [EXT]");
+                        break;
+                    case CoordinatedDecision::MitigateSpillback:
+                        ImGui::TextColored(ImVec4(0.95f, 0.35f, 0.35f, 1.00f), "COORD [SPL]");
+                        break;
+                    case CoordinatedDecision::ShortenPhase:
+                        ImGui::TextColored(ImVec4(1.00f, 0.65f, 0.20f, 1.00f), "COORD [GAP]");
+                        break;
+                    case CoordinatedDecision::SwitchPhase:
+                        ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.25f, 1.00f), "COORD [SWT]");
+                        break;
+                    case CoordinatedDecision::Hold:
+                    default:
+                        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "COORD [HLD]");
+                        break;
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", std::string(cc->last_decision_reason()).c_str());
                 }
             } else {
                 ImGui::TextDisabled("FixedTime");
