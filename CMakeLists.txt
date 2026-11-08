@@ -190,6 +190,8 @@ add_library(syntraq_core STATIC
     src/signals/adaptive_controller.cpp
     src/signals/rl_signal_controller.cpp
     src/signals/rl_controller.cpp
+    src/signals/coordinated_controller.cpp
+    src/signals/network_coordination_manager.cpp
     src/signals/traffic_signal_controller.cpp
     src/routing/dijkstra_router.cpp
     src/routing/astar_router.cpp
@@ -307,6 +309,13 @@ target_compile_options(syntraq_compare_controllers PRIVATE
 add_executable(syntraq_compare_routing experiments/compare_routing.cpp)
 target_link_libraries(syntraq_compare_routing PRIVATE syntraq_core)
 target_compile_options(syntraq_compare_routing PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
+add_executable(syntraq_compare_network_coordination experiments/compare_network_coordination.cpp)
+target_link_libraries(syntraq_compare_network_coordination PRIVATE syntraq_core)
+target_compile_options(syntraq_compare_network_coordination PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
