@@ -95,3 +95,4 @@ void NetworkCoordinationManager::exchange_coordination_states(
 }
 
 } // namespace syntraq
+
