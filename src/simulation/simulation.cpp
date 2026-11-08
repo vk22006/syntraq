@@ -3,9 +3,11 @@
 //
 
 #include "syntraq/simulation/simulation.hpp"
+#include "syntraq/signals/rl_controller.hpp"
 #include "syntraq/world/road_network.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <map>
 
 namespace syntraq {
@@ -62,7 +64,20 @@ void Simulation::init_default_signals() {
                 rl_cfg.min_green_s = cfg_.default_green_duration_s;
                 rl_cfg.yellow_s    = cfg_.default_yellow_duration_s;
                 rl_cfg.all_red_s   = cfg_.default_all_red_duration_s;
-                c = TrafficSignalController::make_rl(network_, id, rl_cfg);
+                rl_cfg.model_path  = cfg_.rl_model_path;
+
+                if (!shared_rl_policy_ && cfg_.enable_rl_model) {
+                    shared_rl_policy_ = std::make_shared<RLPolicyInference>();
+                    std::string mpath = cfg_.rl_model_path;
+                    if (!std::filesystem::exists(mpath)) {
+                        if (std::filesystem::exists("../" + mpath)) mpath = "../" + mpath;
+                        else if (std::filesystem::exists("../../" + mpath)) mpath = "../../" + mpath;
+                    }
+                    if (std::filesystem::exists(mpath)) {
+                        shared_rl_policy_->loadModel(mpath);
+                    }
+                }
+                c = TrafficSignalController::make_rl(network_, id, rl_cfg, shared_rl_policy_);
             } else {
                 c = TrafficSignalController::make_fixed_time(
                     network_,
@@ -96,6 +111,15 @@ void Simulation::tick() {
 
     for (auto& [id, controller] : signal_controllers_) {
         controller.observe_traffic(road_queues, road_max_waits);
+        if (auto* rlc = controller.as<RLController>()) {
+            if (rlc->is_decision_due()) {
+                const auto obs = compute_rl_observation(id);
+                rlc->receive_observation(obs);
+                rlc->run_inference();
+                const int act = rlc->produce_action();
+                rlc->apply_action(act);
+            }
+        }
         controller.tick(cfg_.dt_seconds);
     }
 
@@ -169,6 +193,15 @@ void Simulation::update(float dt_real) {
     if (ticks_done >= kMaxTicksPerUpdate) {
         accumulator_ = 0.0f;
     }
+
+    // Update measured simulation FPS over real-time window
+    real_time_window_ += dt_real;
+    ticks_in_window_  += ticks_done;
+    if (real_time_window_ >= 0.20f) {
+        state_.simulation_fps = static_cast<float>(ticks_in_window_) / real_time_window_;
+        ticks_in_window_  = 0;
+        real_time_window_ = 0.0f;
+    }
 }
 
 void Simulation::run_for(float duration_s) {
@@ -193,6 +226,8 @@ void Simulation::reset() {
         spawner_.allowed_destinations = allowed_destinations_;
     }
     accumulator_           = 0.0f;
+    real_time_window_      = 0.0f;
+    ticks_in_window_       = 0;
     for (auto& [id, controller] : signal_controllers_) {
         controller.reset();
     }
@@ -358,6 +393,91 @@ void Simulation::despawn_arrived() {
 
     const auto after   = static_cast<uint32_t>(vehicles_.size());
     state_.total_arrived += (before - after);
+}
+
+std::vector<float> Simulation::compute_rl_observation(IntersectionId id) const {
+    std::vector<float> obs(12, 0.0f);
+    const auto it = signal_controllers_.find(id);
+    if (it == signal_controllers_.end()) {
+        return obs;
+    }
+    const auto& ctrl = it->second;
+    if (ctrl.phases().size() < 2) {
+        return obs;
+    }
+
+    const auto& p0_roads = ctrl.phases()[0].green_roads;
+    const auto& p1_roads = ctrl.phases()[1].green_roads;
+
+    float q_p0 = 0.0f, q_p1 = 0.0f;
+    float app_p0 = 0.0f, app_p1 = 0.0f;
+    float spd_sum_p0 = 0.0f, spd_sum_p1 = 0.0f;
+    uint32_t cnt_p0 = 0, cnt_p1 = 0;
+    float wait_sum_p0 = 0.0f, wait_sum_p1 = 0.0f;
+
+    for (const auto& v : vehicles_) {
+        if (v.state == VehicleState::Arrived) continue;
+
+        const bool in_p0 = std::find(p0_roads.begin(), p0_roads.end(), v.current_road) != p0_roads.end();
+        if (in_p0) {
+            spd_sum_p0 += v.speed_mps;
+            cnt_p0++;
+            if (v.state == VehicleState::Stopped || v.speed_mps < 0.5f) {
+                q_p0 += 1.0f;
+                wait_sum_p0 += v.wait_time_s;
+            } else {
+                app_p0 += 1.0f;
+            }
+            continue;
+        }
+
+        const bool in_p1 = std::find(p1_roads.begin(), p1_roads.end(), v.current_road) != p1_roads.end();
+        if (in_p1) {
+            spd_sum_p1 += v.speed_mps;
+            cnt_p1++;
+            if (v.state == VehicleState::Stopped || v.speed_mps < 0.5f) {
+                q_p1 += 1.0f;
+                wait_sum_p1 += v.wait_time_s;
+            } else {
+                app_p1 += 1.0f;
+            }
+            continue;
+        }
+    }
+
+    constexpr float kMaxQueueNorm = 20.0f;
+    constexpr float kMaxSpeedNorm = 13.89f; // 50 km/h
+    constexpr float kMaxWaitNorm  = 60.0f;  // 60 seconds
+
+    const float spd_p0  = (cnt_p0 > 0) ? (spd_sum_p0 / static_cast<float>(cnt_p0)) : kMaxSpeedNorm;
+    const float spd_p1  = (cnt_p1 > 0) ? (spd_sum_p1 / static_cast<float>(cnt_p1)) : kMaxSpeedNorm;
+    const float wait_p0 = (q_p0 > 0.0f) ? (wait_sum_p0 / q_p0) : 0.0f;
+    const float wait_p1 = (q_p1 > 0.0f) ? (wait_sum_p1 / q_p1) : 0.0f;
+
+    obs[0] = std::clamp(q_p0 / kMaxQueueNorm, 0.0f, 1.0f);
+    obs[1] = std::clamp(q_p1 / kMaxQueueNorm, 0.0f, 1.0f);
+    obs[2] = std::clamp(app_p0 / kMaxQueueNorm, 0.0f, 1.0f);
+    obs[3] = std::clamp(app_p1 / kMaxQueueNorm, 0.0f, 1.0f);
+    obs[4] = std::clamp(spd_p0 / kMaxSpeedNorm, 0.0f, 1.0f);
+    obs[5] = std::clamp(spd_p1 / kMaxSpeedNorm, 0.0f, 1.0f);
+
+    obs[6] = (ctrl.current_phase_index() == 0) ? 0.0f : 1.0f;
+
+    float max_green = 45.0f;
+    if (const auto* rlc = ctrl.as<RLController>()) {
+        max_green = rlc->config().max_green_s;
+        obs[8] = rlc->is_in_transition() ? 1.0f : 0.0f;
+        obs[9] = rlc->can_switch() ? 1.0f : 0.0f;
+    } else {
+        obs[8] = (ctrl.current_stage() != PhaseStage::Green) ? 1.0f : 0.0f;
+        obs[9] = (ctrl.current_stage() == PhaseStage::Green && ctrl.stage_elapsed_s() >= 4.0f) ? 1.0f : 0.0f;
+    }
+    obs[7] = std::clamp(ctrl.stage_elapsed_s() / max_green, 0.0f, 1.0f);
+
+    obs[10] = std::clamp(wait_p0 / kMaxWaitNorm, 0.0f, 1.0f);
+    obs[11] = std::clamp(wait_p1 / kMaxWaitNorm, 0.0f, 1.0f);
+
+    return obs;
 }
 
 } // namespace syntraq
