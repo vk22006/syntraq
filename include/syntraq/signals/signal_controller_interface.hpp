@@ -44,7 +44,8 @@ enum class PhaseStage : uint8_t {
 enum class SignalControllerType : uint8_t {
     FixedTime,
     Adaptive,
-    ReinforcementLearning
+    ReinforcementLearning,
+    Coordinated
 };
 
 [[nodiscard]] constexpr std::string_view to_string(SignalControllerType type) noexcept {
@@ -52,6 +53,7 @@ enum class SignalControllerType : uint8_t {
         case SignalControllerType::FixedTime:             return "FixedTime";
         case SignalControllerType::Adaptive:              return "Adaptive";
         case SignalControllerType::ReinforcementLearning: return "ReinforcementLearning";
+        case SignalControllerType::Coordinated:           return "Coordinated";
     }
     return "Unknown";
 }
