@@ -10,6 +10,7 @@
 //
 
 #include "syntraq/signals/adaptive_controller.hpp"
+#include "syntraq/signals/coordinated_controller.hpp"
 #include "syntraq/signals/fixed_time_controller.hpp"
 #include "syntraq/signals/rl_controller.hpp"
 #include "syntraq/signals/rl_signal_controller.hpp"
@@ -44,6 +45,9 @@ public:
 
     /// Converting constructor from RLController
     TrafficSignalController(RLController controller); // NOLINT
+
+    /// Converting constructor from CoordinatedController
+    TrafficSignalController(CoordinatedController controller); // NOLINT
 
     /// Legacy fixed-time constructor (constructs FixedTimeController internally)
     TrafficSignalController(IntersectionId           intersection_id,
@@ -137,6 +141,13 @@ public:
         IntersectionId                     intersection_id,
         RLControllerConfig                 config = {},
         std::shared_ptr<RLPolicyInference> shared_policy = nullptr);
+
+    static TrafficSignalController make_coordinated(
+        const RoadNetwork&          network,
+        IntersectionId              intersection_id,
+        CoordinatedControllerConfig config = {},
+        float                       yellow_s  = 3.0f,
+        float                       all_red_s = 2.0f);
 
 private:
     std::shared_ptr<ITrafficSignalController> impl_;
