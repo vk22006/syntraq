@@ -94,10 +94,12 @@ struct Config {
 
     // ── Traffic Signals ──────────────────────────────────────────
     bool                 enable_traffic_signals    { true };   ///< Enable traffic signals
-    SignalControllerType signal_controller_type    { SignalControllerType::FixedTime }; ///< FixedTime or Adaptive
+    SignalControllerType signal_controller_type    { SignalControllerType::FixedTime }; ///< FixedTime, Adaptive, or RL
     float                default_green_duration_s  { 10.0f };  ///< Fixed-time green stage duration
     float                default_yellow_duration_s {  3.0f };  ///< Fixed-time yellow stage duration
     float                default_all_red_duration_s{  2.0f };  ///< Interphase all-red clearance duration
+    std::string          rl_model_path             { "models/traffic_signal_dqn.onnx" }; ///< ONNX policy path
+    bool                 enable_rl_model           { true };   ///< Whether to attempt loading ONNX model for RL
 
     /// Load from a JSON file; returns default config on failure.
     static Config from_file(const std::string& path);
