@@ -25,6 +25,13 @@ enum class TrafficScenario : uint8_t {
     Custom,
 };
 
+// ── Routing Strategies ───────────────────────────────────────
+
+enum class RoutingStrategyType : uint8_t {
+    Static,
+    TrafficAware,
+};
+
 struct TrafficScenarioConfig {
     TrafficScenario scenario{ TrafficScenario::Medium };
     std::string     name{ "Medium Traffic" };
@@ -85,9 +92,10 @@ struct Config {
     bool     headless         { false };  ///< Skip window / rendering when true
 
     // ── Traffic Behavior & Scenario ──────────────────────────────
-    TrafficScenario scenario                { TrafficScenario::Medium };
-    float           vehicle_spawn_interval_s{ 2.0f };
-    uint32_t        max_vehicles            { 40 };
+    TrafficScenario     scenario                { TrafficScenario::Medium };
+    float               vehicle_spawn_interval_s{ 2.0f };
+    uint32_t            max_vehicles            { 40 };
+    RoutingStrategyType routing_strategy        { RoutingStrategyType::Static }; ///< Static (distance) or TrafficAware
 
     // ── Scenario File (future use) ───────────────────────────────
     std::string scenario_file{ "configs/default_scenario.json" };
