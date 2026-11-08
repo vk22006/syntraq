@@ -29,6 +29,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Reinforcement Learning Environment | Single-intersection MDP, Gymnasium & PyTorch interface, DQN policy | ✅ Complete |
 | RL Traffic Signal Controller | PyTorch Double DQN, multi-seed evaluation, ONNX export, C++ inference | ✅ Complete |
 | Traffic-Aware Dynamic Routing | Multi-objective cost (distance + congestion + delay), Static vs TrafficAware | ✅ Complete |
+| Network-Level Coordinated Control | Multi-intersection coordination (Green-wave progression + spillback gating), network telemetry | ✅ Complete |
  
 ---
  
@@ -40,7 +41,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (185 tests) |
+| Tests          | GoogleTest + CTest (197 tests) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
@@ -103,7 +104,7 @@ The simulator can run headlessly without Raylib/ImGui initialization, making it 
 #   --duration, -d <seconds> Simulation duration in seconds
 #   --seed <number>          Random seed for deterministic generation
 #   --scenario, -s <preset>  Traffic scenario preset: low, med, high, rush
-#   --controller <type>      Signal controller type: fixed, adaptive, rl (default: fixed)
+#   --controller <type>      Signal controller type: fixed, adaptive, rl, coordinated (default: fixed)
 #   --routing <strategy>     Routing strategy: static, traffic-aware (default: static)
 #   --rl-model <path>        Path to RL policy ONNX model
 #   --no-model               Run RL controller without model (safe heuristic fallback)
@@ -147,6 +148,7 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+.\build\bin\test_coordinated_control.exe
 .\build\bin\test_route_cost.exe
 .\build\bin\test_rl_controller.exe
 .\build\bin\test_rl_policy_inference.exe
@@ -423,6 +425,58 @@ $$\text{Cost}(e) = w_d \cdot \text{Distance}(e) + w_c \cdot \text{CongestionPena
 
 ---
 
+## Network-Level Coordinated Signal Control
+
+SyntraQ extends intelligent signal actuation from single isolated junctions to multi-intersection network corridors. Neighboring intersections exchange bidirectional traffic states to enable upstream green-wave progression and downstream queue spillback mitigation:
+
+```powershell
+# 1. Run simulation with network-level coordinated signal control
+.\build\bin\syntraq.exe --controller coordinated
+
+# 2. Run automated multi-scenario coordination benchmark
+.\build\bin\syntraq_compare_network_coordination.exe 50.0
+
+# 3. Process results and generate comparative visualization
+python scripts/analyze_coordination_comparison.py
+```
+
+### Coordination Strategy & Telemetry Exchange
+
+```
+               Upstream Platoon ETA & Flow (Feedforward)
+      Intersection 0 ─────────────────────────────► Intersection 1
+             ▲                                           │
+             │                                           ▼
+      [Spillback Gating]                           [Green Wave]
+             │                                           │
+             ◄───────────────────────────────────────────┘
+               Downstream Queue & Occupancy (Feedback)
+```
+
+- **Upstream Green Wave Progression**: When upstream signals clear platoons, approaching travel time $t_{\text{eta}} = \frac{L_{\text{link}}}{v_{\text{speed}}}$ is forecasted. If arrival is within the progression window ($t_{\text{eta}} \le 6.0\,\text{s}$), the downstream intersection evaluates `ExtendGreenWave`, holding green so platoons progress without stopping.
+- **Downstream Spillback Mitigation**: If downstream link queues exceed the threshold ($Q_{\text{down}} \ge 5\,\text{veh}$) or occupancy reaches $\ge 60\%$, the upstream controller evaluates `MitigateSpillback` and immediately truncates green, preventing queues from propagating and blocking cross traffic.
+- **Explainable Policy**: Decisions are tagged deterministically with explainable labels (`ExtendGreenWave`, `MitigateSpillback`, `ExtendGreenLocal`, `ShortenPhase`, `Hold`).
+- **Single-Intersection Fallback**: When an intersection has no neighboring controlled signals, it operates autonomously on local queues as an actuated adaptive controller with zero configuration overhead.
+
+### Empirical Coordination Benchmark (3-Intersection Corridor)
+
+| Traffic Scenario | Performance Metric | Fixed-Time (Baseline) | Adaptive (Local) | Coordinated (Network) | Relative Improvement vs Fixed |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| **Medium Traffic** | **Average Waiting Time** | $7.84\,\text{s}$ | $5.35\,\text{s}$ | **$5.47\,\text{s}$** | **$-30.2\%$** |
+| | **Average Travel Time** | $21.54\,\text{s}$ | $19.03\,\text{s}$ | **$19.84\,\text{s}$** | **$-7.9\%$** |
+| **High Traffic** | **Average Waiting Time** | $4.68\,\text{s}$ | $4.40\,\text{s}$ | **$4.22\,\text{s}$** | **$-10.0\%$** |
+| | **Congestion Ratio** | $47.5\%$ | $45.8\%$ | **$45.9\%$** | **$-3.2\%$** |
+| **Rush Hour** | **Average Waiting Time** | $5.19\,\text{s}$ | $3.99\,\text{s}$ | **$3.41\,\text{s}$** | **$-34.3\%$** |
+| | **Average Travel Time** | $18.68\,\text{s}$ | $16.49\,\text{s}$ | **$15.94\,\text{s}$** | **$-14.6\%$** |
+
+### Artifacts & Reports
+- **Detailed Evaluation Report**: [docs/network_coordination_comparison.md](docs/network_coordination_comparison.md)
+- **Comparative 4-Panel Visualization**: [docs/network_coordination_comparison.png](docs/network_coordination_comparison.png)
+- **Per-Run Evaluation CSV**: `data/experiments/network_coordination_runs.csv`
+- **Summary Statistics CSV**: `data/experiments/network_coordination_summary.csv`
+
+---
+
 ## Project Structure
 
 ```
@@ -431,7 +485,7 @@ SyntraQ/
 │   ├── core/          # Config and shared types (.hpp)
 │   ├── world/         # Road network graph (Intersections & Roads) (.hpp)
 │   ├── vehicles/      # Vehicle kinematics, car-following, and spawner (.hpp)
-│   ├── signals/       # Traffic signals (Interface, FixedTime, Adaptive, RL) (.hpp)
+│   ├── signals/       # Traffic signals (Interface, FixedTime, Adaptive, RL, Coordinated) (.hpp)
 │   ├── routing/       # Routing engine (Dijkstra, A*, Heuristics, Costs) (.hpp)
 │   ├── metrics/       # Telemetry & ML dataset collectors (.hpp)
 │   ├── ai/            # Predictor, feature scaler, RL env, C-ABI, RLPolicyInference (.hpp / .h)
@@ -441,7 +495,7 @@ SyntraQ/
 │   ├── core/          # Config implementation
 │   ├── world/         # Road network implementation & single-intersection topology
 │   ├── vehicles/      # Kinematics and queue formation systems
-│   ├── signals/       # FixedTimeController, AdaptiveController, RLSignalController
+│   ├── signals/       # FixedTimeController, AdaptiveController, RLSignalController, RLController, CoordinatedController, NetworkCoordinationManager
 │   ├── routing/       # Dijkstra, A*, and graph generator
 │   ├── metrics/       # Telemetry collector, ML data generator, CSV exporters
 │   ├── ai/            # Predictor, FeatureScaler, TrafficSignalEnv, env_c_api, RLPolicyInference
