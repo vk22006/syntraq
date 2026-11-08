@@ -39,7 +39,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (163 tests) |
+| Tests          | GoogleTest + CTest (170 tests) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
@@ -102,6 +102,9 @@ The simulator can run headlessly without Raylib/ImGui initialization, making it 
 #   --duration, -d <seconds> Simulation duration in seconds
 #   --seed <number>          Random seed for deterministic generation
 #   --scenario, -s <preset>  Traffic scenario preset: low, med, high, rush
+#   --controller <type>      Signal controller type: fixed, adaptive, rl (default: fixed)
+#   --rl-model <path>        Path to RL policy ONNX model
+#   --no-model               Run RL controller without model (safe heuristic fallback)
 #   --csv <path>             Export run summary metrics to CSV
 #   --csv-timeseries <path>  Export periodic snapshot time-series to CSV
 #   --screenshot <path>      Capture screenshot at start and exit
@@ -142,6 +145,7 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+.\build\bin\test_rl_controller.exe
 .\build\bin\test_rl_policy_inference.exe
 .\build\bin\test_traffic_signal_env.exe
 .\build\bin\test_adaptive_controller.exe
@@ -301,6 +305,7 @@ python scripts/train_rl_agent.py --episodes 50 --duration 180.0 --scenario Mediu
 python scripts/export_rl_onnx.py
 
 # 4. Execute C++ native ONNX inference validation test
+.\build\bin\test_rl_controller.exe
 .\build\bin\test_rl_policy_inference.exe
 ```
 
@@ -333,6 +338,36 @@ To guarantee statistical validity without claiming superiority on a single isola
   - Multi-Seed 4-Panel Comparison: [docs/controller_three_way_comparison.png](docs/controller_three_way_comparison.png)
 - **Detailed Evaluation Report**: [docs/rl_controller_evaluation.md](docs/rl_controller_evaluation.md)
 - **Environment Design Document**: [docs/rl_environment_design.md](docs/rl_environment_design.md)
+
+---
+
+## Native RL Inference & Controller Mode Switching
+
+SyntraQ integrates the trained RL policy directly into the real-time C++ simulation engine via an autonomous, high-throughput `RLController`:
+
+```powershell
+# 1. Run simulation with RL controller (loads models/traffic_signal_dqn.onnx)
+.\build\bin\syntraq.exe --controller rl
+
+# 2. Run simulation with RL controller in safe fallback mode (no AI model loaded)
+.\build\bin\syntraq.exe --controller rl --no-model
+
+# 3. Specify custom RL model path
+.\build\bin\syntraq.exe --controller rl --rl-model models/custom_dqn.onnx
+```
+
+### 4-Step Execution Lifecycle
+1. **Receive Observation (`receive_observation`)**: Acquires normalized 12-dimensional state vector from simulation approaches.
+2. **Run Inference (`run_inference`)**: Evaluates forward pass on ONNX Runtime session; falls back gracefully to deterministic heuristic when no model is loaded.
+3. **Produce Action (`produce_action`)**: Maps network output or fallback heuristic into `RLAction` (`0` = Maintain, `1` = Switch).
+4. **Apply Action (`apply_action`)**: Transitions the intersection signal controller while enforcing clearance safety intervals (minimum green, yellow, and all-red clearance).
+
+### Performance & Telemetry Tracking
+- **Inference Latency**: Sub-microsecond tracking of instantaneous and rolling average ONNX inference times ($\sim 8\text{--}14\,\mu\text{s}$).
+- **Decisions Per Second**: Dynamic rate computation over rolling 1.0s windows.
+- **Simulation FPS**: Decoupled real-time simulation tick measurement reported alongside render display framerate.
+- **Three-Way Mode Switch**: Instantaneous runtime switching between **Fixed**, **Adaptive**, and **RL** controllers via UI buttons or CLI options.
+- **Zero-Crash Model Independence**: Verified operation even when no AI model is present, seamlessly falling back to queue-balanced actuated control without crashing.
 
 ---
 
