@@ -36,6 +36,9 @@ TrafficSignalController::TrafficSignalController(RLSignalController controller)
 TrafficSignalController::TrafficSignalController(RLController controller)
     : impl_(std::make_shared<RLController>(std::move(controller))) {}
 
+TrafficSignalController::TrafficSignalController(CoordinatedController controller)
+    : impl_(std::make_shared<CoordinatedController>(std::move(controller))) {}
+
 TrafficSignalController::TrafficSignalController(
     IntersectionId           intersection_id,
     std::vector<SignalPhase> phases,
@@ -184,6 +187,16 @@ TrafficSignalController TrafficSignalController::make_rl(
     std::shared_ptr<RLPolicyInference> shared_policy) {
     return TrafficSignalController(
         RLController::make_rl(network, intersection_id, config, std::move(shared_policy)));
+}
+
+TrafficSignalController TrafficSignalController::make_coordinated(
+    const RoadNetwork&          network,
+    IntersectionId              intersection_id,
+    CoordinatedControllerConfig config,
+    float                       yellow_s,
+    float                       all_red_s) {
+    return TrafficSignalController(
+        CoordinatedController::make_default_2phase(network, intersection_id, config, yellow_s, all_red_s));
 }
 
 } // namespace syntraq
