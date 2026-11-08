@@ -6,6 +6,7 @@
 //
 
 #include "syntraq/rendering/renderer.hpp"
+#include "syntraq/signals/rl_controller.hpp"
 
 // Third-party headers — isolated to this .cpp
 #include "raylib.h"
@@ -220,7 +221,8 @@ SimControlAction Renderer::render_frame(
     const RoadNetwork&                                                 network,
     const std::vector<Vehicle>&                                        vehicles,
     float                                                              current_speed_scale,
-    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+    SignalControllerType                                               controller_type) {
     update_camera(network);
 
     begin_frame();
@@ -237,7 +239,7 @@ SimControlAction Renderer::render_frame(
 
     // ── Screen Space HUD & UI Overlays ─────────────────────────────────────
     draw_status_bar(state, current_speed_scale);
-    SimControlAction action = draw_imgui(state, network, current_speed_scale, signal_controllers);
+    SimControlAction action = draw_imgui(state, network, current_speed_scale, signal_controllers, controller_type);
 
     end_frame();
 
@@ -855,6 +857,10 @@ void Renderer::draw_simulation_metrics(const SimState& state) {
         ImGui::TableSetColumnIndex(1); ImGui::Text("%.3f s", cfg_.dt_seconds);
 
         ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::Text("Sim FPS");
+        ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f", state.simulation_fps);
+
+        ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0); ImGui::Text("Render FPS");
         ImGui::TableSetColumnIndex(1); ImGui::Text("%d", GetFPS());
 
@@ -913,7 +919,102 @@ void Renderer::draw_simulation_panel(
 }
 
 void Renderer::draw_signal_status(
-    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+    SignalControllerType                                               controller_type,
+    SimControlAction&                                                  action) {
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "SIGNAL CONTROLLER MODE");
+    ImGui::Separator();
+
+    const char* ctrl_labels[] = { "Fixed", "Adaptive", "RL" };
+    const SignalControllerType ctrl_types[] = {
+        SignalControllerType::FixedTime,
+        SignalControllerType::Adaptive,
+        SignalControllerType::ReinforcementLearning
+    };
+
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float btn_w   = (avail_w - 2.0f * spacing) / 3.0f;
+
+    for (int i = 0; i < 3; ++i) {
+        if (i > 0) ImGui::SameLine();
+        const bool is_active = (controller_type == ctrl_types[i]);
+        if (is_active) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.60f, 0.80f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.70f, 0.90f, 1.00f));
+        }
+
+        if (ImGui::Button(ctrl_labels[i], ImVec2(btn_w, 24.0f))) {
+            action.request_controller_type = ctrl_types[i];
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Switch to %s signal controller", ctrl_labels[i]);
+        }
+
+        if (is_active) {
+            ImGui::PopStyleColor(2);
+        }
+    }
+
+    // RL Telemetry & Aggregated Metrics
+    const RLController* first_rlc = nullptr;
+    float avg_latency_us = 0.0f;
+    float total_dps = 0.0f;
+    uint32_t rl_count = 0;
+    bool any_model_loaded = false;
+
+    if (signal_controllers) {
+        for (const auto& [id, ctrl] : *signal_controllers) {
+            if (const auto* rlc = ctrl.as<RLController>()) {
+                if (!first_rlc) first_rlc = rlc;
+                avg_latency_us += rlc->average_inference_latency_us();
+                total_dps += rlc->decisions_per_second();
+                if (rlc->is_model_loaded()) any_model_loaded = true;
+                rl_count++;
+            }
+        }
+    }
+
+    if (controller_type == SignalControllerType::ReinforcementLearning || rl_count > 0) {
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "RL POLICY INFERENCE (DQN)");
+        ImGui::Separator();
+
+        if (ImGui::BeginTable("RLStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("AI Model");
+            ImGui::TableSetColumnIndex(1);
+            if (any_model_loaded) {
+                ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "LOADED");
+                if (ImGui::IsItemHovered() && first_rlc) {
+                    ImGui::SetTooltip("%s", first_rlc->model_path().c_str());
+                }
+            } else {
+                ImGui::TextColored(ImVec4(1.00f, 0.70f, 0.20f, 1.00f), "NO MODEL (Fallback)");
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Running in safe heuristic fallback mode (no AI model loaded)");
+                }
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("Inference Latency");
+            ImGui::TableSetColumnIndex(1);
+            if (first_rlc && first_rlc->last_inference_latency_us() > 0.0f) {
+                const float mean_lat = (rl_count > 0) ? (avg_latency_us / static_cast<float>(rl_count)) : 0.0f;
+                ImGui::Text("%.1f us (avg: %.1f us)", first_rlc->last_inference_latency_us(), mean_lat);
+            } else {
+                ImGui::TextDisabled("N/A");
+            }
+
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("Decisions / Sec");
+            ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f /s", total_dps);
+
+            ImGui::EndTable();
+        }
+    }
+
+    ImGui::Spacing();
     ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC SIGNALS");
     ImGui::Separator();
 
@@ -943,7 +1044,20 @@ void Renderer::draw_signal_status(
             ImGui::Text("I-%u", static_cast<uint32_t>(inter_id));
 
             ImGui::TableSetColumnIndex(1);
-            if (const auto* ac = controller->as<AdaptiveController>()) {
+            if (const auto* rlc = controller->as<RLController>()) {
+                if (rlc->last_action() == 1) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.25f, 1.00f), "RL [SWT]");
+                } else {
+                    ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "RL [HOLD]");
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Action: %s | Q(Maintain)=%.2f, Q(Switch)=%.2f | Latency: %.1f us",
+                                      rlc->last_action() == 1 ? "Switch" : "Maintain",
+                                      rlc->last_decision().q_maintain,
+                                      rlc->last_decision().q_switch,
+                                      rlc->last_inference_latency_us());
+                }
+            } else if (const auto* ac = controller->as<AdaptiveController>()) {
                 switch (ac->last_decision()) {
                     case AdaptiveDecision::ExtendGreen:
                         ImGui::TextColored(ImVec4(0.35f, 0.95f, 0.45f, 1.00f), "ADAPT [EXT]");
@@ -1096,21 +1210,23 @@ void Renderer::draw_traffic_panel(
     const SimState&                                                    state,
     const RoadNetwork&                                                 network,
     const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+    SignalControllerType                                               controller_type,
     SimControlAction&                                                  action) {
     const float screen_w = static_cast<float>(GetScreenWidth());
     const float screen_h = static_cast<float>(GetScreenHeight());
 
-    const float panel_w     = std::clamp(screen_w * 0.20f, 280.0f, 330.0f);
+    const float panel_w     = std::clamp(screen_w * 0.22f, 310.0f, 360.0f);
     const float margin_x    = (screen_w < 1000.0f) ? 12.0f : 20.0f;
-    const float min_panel_w = 260.0f;
-    const float max_panel_w = std::min(420.0f, screen_w * 0.35f);
+    const float min_panel_w = 280.0f;
+    const float max_panel_w = std::min(450.0f, screen_w * 0.35f);
     const float max_panel_h = std::max(200.0f, screen_h - 50.0f);
+    const float default_h   = std::min(max_panel_h, 820.0f);
 
     const float init_x = std::max(margin_x + panel_w + 40.0f, screen_w - panel_w - margin_x);
-    const float init_y = std::max(20.0f, (screen_h - 26.0f - 680.0f) * 0.5f);
+    const float init_y = std::max(20.0f, (screen_h - 26.0f - default_h) * 0.5f);
 
     ImGui::SetNextWindowPos({ init_x, init_y }, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({ panel_w, 680.0f }, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({ panel_w, default_h }, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(min_panel_w, 150.0f),
         ImVec2(max_panel_w, max_panel_h));
@@ -1127,7 +1243,7 @@ void Renderer::draw_traffic_panel(
 
         ImGui::Spacing();
         if (ImGui::CollapsingHeader("TRAFFIC SIGNALS", ImGuiTreeNodeFlags_DefaultOpen)) {
-            draw_signal_status(signal_controllers);
+            draw_signal_status(signal_controllers, controller_type, action);
         }
     }
     ImGui::End();
@@ -1137,11 +1253,12 @@ SimControlAction Renderer::draw_imgui(
     const SimState&                                                    state,
     const RoadNetwork&                                                 network,
     float                                                              current_speed_scale,
-    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers) {
+    const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+    SignalControllerType                                               controller_type) {
     SimControlAction action;
 
     draw_simulation_panel(state, network, current_speed_scale, action);
-    draw_traffic_panel(state, network, signal_controllers, action);
+    draw_traffic_panel(state, network, signal_controllers, controller_type, action);
 
     return action;
 }
