@@ -34,10 +34,11 @@ struct DebugRenderFlags {
 
 /// Simulation commands triggered from UI buttons or keyboard shortcuts.
 struct SimControlAction {
-    bool                           request_pause_toggle{ false };
-    bool                           request_reset       { false };
-    std::optional<float>           request_speed_scale {};
-    std::optional<TrafficScenario> request_scenario    {};
+    bool                                request_pause_toggle{ false };
+    bool                                request_reset       { false };
+    std::optional<float>                request_speed_scale {};
+    std::optional<TrafficScenario>      request_scenario    {};
+    std::optional<SignalControllerType> request_controller_type {};
 };
 
 /// Forward declaration for internal camera storage (avoids raylib.h in header).
@@ -68,7 +69,8 @@ public:
         const RoadNetwork&                                                 network,
         const std::vector<Vehicle>&                                        vehicles,
         float                                                              current_speed_scale = 1.0f,
-        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers = nullptr);
+        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers = nullptr,
+        SignalControllerType                                               controller_type = SignalControllerType::FixedTime);
 
     /// Reset camera view to center and frame the road network with comfortable margins.
     void reset_camera(const RoadNetwork& network);
@@ -93,7 +95,8 @@ private:
         const SimState&                                                    state,
         const RoadNetwork&                                                 network,
         float                                                              current_speed_scale,
-        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers);
+        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+        SignalControllerType                                               controller_type);
 
     // ── Focused UI Panel Functions (Milestone 4.5) ─────────────────────────
     void draw_simulation_panel(
@@ -113,9 +116,12 @@ private:
         const SimState&                                                    state,
         const RoadNetwork&                                                 network,
         const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+        SignalControllerType                                               controller_type,
         SimControlAction&                                                  action);
     void draw_signal_status(
-        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers);
+        const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
+        SignalControllerType                                               controller_type,
+        SimControlAction&                                                  action);
     void draw_traffic_information(
         const SimState&    state,
         const RoadNetwork& network,
