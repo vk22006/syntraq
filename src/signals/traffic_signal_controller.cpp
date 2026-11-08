@@ -33,6 +33,9 @@ TrafficSignalController::TrafficSignalController(AdaptiveController controller)
 TrafficSignalController::TrafficSignalController(RLSignalController controller)
     : impl_(std::make_shared<RLSignalController>(std::move(controller))) {}
 
+TrafficSignalController::TrafficSignalController(RLController controller)
+    : impl_(std::make_shared<RLController>(std::move(controller))) {}
+
 TrafficSignalController::TrafficSignalController(
     IntersectionId           intersection_id,
     std::vector<SignalPhase> phases,
@@ -175,11 +178,12 @@ TrafficSignalController TrafficSignalController::make_adaptive(
 }
 
 TrafficSignalController TrafficSignalController::make_rl(
-    const RoadNetwork& network,
-    IntersectionId     intersection_id,
-    RLControllerConfig config) {
+    const RoadNetwork&                 network,
+    IntersectionId                     intersection_id,
+    RLControllerConfig                 config,
+    std::shared_ptr<RLPolicyInference> shared_policy) {
     return TrafficSignalController(
-        RLSignalController::make_rl(network, intersection_id, config));
+        RLController::make_rl(network, intersection_id, config, std::move(shared_policy)));
 }
 
 } // namespace syntraq
