@@ -28,6 +28,7 @@ int main(int argc, char* argv[]) {
     std::optional<uint32_t> cli_seed;
     std::optional<syntraq::TrafficScenario> cli_scenario;
     std::optional<syntraq::SignalControllerType> cli_controller;
+    std::optional<syntraq::RoutingStrategyType> cli_routing;
     std::string cli_rl_model;
     bool cli_no_model = false;
 
@@ -73,6 +74,13 @@ int main(int argc, char* argv[]) {
             } else if (ct == "rl" || ct == "RL" || ct == "reinforcement" || ct == "ReinforcementLearning") {
                 cli_controller = syntraq::SignalControllerType::ReinforcementLearning;
             }
+        } else if (arg == "--routing" && i + 1 < argc) {
+            std::string rt = argv[++i];
+            if (rt == "traffic-aware" || rt == "traffic_aware" || rt == "aware" || rt == "dynamic") {
+                cli_routing = syntraq::RoutingStrategyType::TrafficAware;
+            } else if (rt == "static" || rt == "distance") {
+                cli_routing = syntraq::RoutingStrategyType::Static;
+            }
         } else if (arg == "--rl-model" && i + 1 < argc) {
             cli_rl_model = argv[++i];
         } else if (arg == "--no-model" || arg == "--no-rl-model") {
@@ -103,6 +111,9 @@ int main(int argc, char* argv[]) {
     }
     if (cli_controller.has_value()) {
         cfg.signal_controller_type = *cli_controller;
+    }
+    if (cli_routing.has_value()) {
+        cfg.routing_strategy = *cli_routing;
     }
     if (!cli_rl_model.empty()) {
         cfg.rl_model_path = cli_rl_model;
@@ -187,7 +198,8 @@ int main(int argc, char* argv[]) {
                                                   sim.vehicles(),
                                                   sim.time_scale(),
                                                   &sim.signal_controllers(),
-                                                  sim.signal_controller_type());
+                                                  sim.signal_controller_type(),
+                                                  sim.routing_strategy_type());
 
         if (action.request_pause_toggle) {
             sim.set_paused(!sim.is_paused());
@@ -203,6 +215,9 @@ int main(int argc, char* argv[]) {
         }
         if (action.request_controller_type.has_value()) {
             sim.set_signal_controller_type(*action.request_controller_type);
+        }
+        if (action.request_routing_strategy.has_value()) {
+            sim.set_routing_strategy_type(*action.request_routing_strategy);
         }
 
         frame_count++;
