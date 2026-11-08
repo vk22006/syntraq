@@ -3,6 +3,8 @@
 //
 
 #include "syntraq/simulation/simulation.hpp"
+#include "syntraq/routing/static_routing.hpp"
+#include "syntraq/routing/traffic_aware_routing.hpp"
 #include "syntraq/signals/rl_controller.hpp"
 #include "syntraq/world/road_network.hpp"
 
@@ -40,6 +42,7 @@ Simulation::Simulation(Config cfg, std::function<RoadNetwork()> network_factory)
     metrics_collector_.set_seed(cfg_.seed);
     data_collector_.set_run_metadata("run_001", cfg_.scenario, scenario_cfg_.name, cfg_.seed);
     init_default_signals();
+    init_default_routing();
 }
 
 void Simulation::init_default_signals() {
@@ -121,6 +124,11 @@ void Simulation::tick() {
             }
         }
         controller.tick(cfg_.dt_seconds);
+    }
+
+    // ── Update real-time conditions for traffic-aware routing ───────────
+    if (traffic_aware_router_) {
+        traffic_aware_router_->update_from_simulation(network_, vehicles_);
     }
 
     // ── 2. Try to spawn a new vehicle (with lane occupancy checks) ────────
@@ -225,6 +233,7 @@ void Simulation::reset() {
     if (!allowed_destinations_.empty()) {
         spawner_.allowed_destinations = allowed_destinations_;
     }
+    init_default_routing();
     accumulator_           = 0.0f;
     real_time_window_      = 0.0f;
     ticks_in_window_       = 0;
@@ -336,6 +345,21 @@ void Simulation::set_signal_controller(TrafficSignalController controller) {
 void Simulation::set_signal_controller_type(SignalControllerType type) {
     cfg_.signal_controller_type = type;
     init_default_signals();
+}
+
+void Simulation::set_routing_strategy_type(RoutingStrategyType type) {
+    cfg_.routing_strategy = type;
+    init_default_routing();
+}
+
+void Simulation::init_default_routing() {
+    if (cfg_.routing_strategy == RoutingStrategyType::TrafficAware) {
+        traffic_aware_router_ = std::make_shared<TrafficAwareRouting>();
+        spawner_.set_route_provider(traffic_aware_router_);
+    } else {
+        traffic_aware_router_.reset();
+        spawner_.set_route_provider(std::make_shared<StaticRouting>());
+    }
 }
 
 const TrafficSignalController* Simulation::signal_controller(IntersectionId id) const noexcept {
