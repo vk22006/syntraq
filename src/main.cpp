@@ -73,6 +73,8 @@ int main(int argc, char* argv[]) {
                 cli_controller = syntraq::SignalControllerType::FixedTime;
             } else if (ct == "rl" || ct == "RL" || ct == "reinforcement" || ct == "ReinforcementLearning") {
                 cli_controller = syntraq::SignalControllerType::ReinforcementLearning;
+            } else if (ct == "coordinated" || ct == "Coordinated" || ct == "coord" || ct == "network") {
+                cli_controller = syntraq::SignalControllerType::Coordinated;
             }
         } else if (arg == "--routing" && i + 1 < argc) {
             std::string rt = argv[++i];
