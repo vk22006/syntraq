@@ -9,6 +9,7 @@
 //
 
 #include "syntraq/core/config.hpp"
+#include "syntraq/signals/network_coordination_manager.hpp"
 #include "syntraq/signals/traffic_signal_controller.hpp"
 #include "syntraq/world/road_network.hpp"
 #include "syntraq/vehicles/vehicle.hpp"
@@ -108,6 +109,10 @@ public:
         return shared_rl_policy_;
     }
 
+    [[nodiscard]] const NetworkCoordinationManager& coordination_manager() const noexcept {
+        return coordination_manager_;
+    }
+
     // ── Routing Engine ───────────────────────────────────────────────────
     void set_route_provider(std::shared_ptr<const IRouteProvider> provider) {
         spawner_.set_route_provider(std::move(provider));
@@ -175,6 +180,7 @@ private:
     std::vector<IntersectionId>  allowed_destinations_{};
     std::shared_ptr<RLPolicyInference>  shared_rl_policy_{ nullptr };
     std::shared_ptr<TrafficAwareRouting> traffic_aware_router_{ nullptr };
+    NetworkCoordinationManager          coordination_manager_{};
     float                               real_time_window_{ 0.0f };
     uint32_t                     ticks_in_window_{ 0 };
 };
