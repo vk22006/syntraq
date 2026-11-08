@@ -24,6 +24,8 @@
 
 namespace syntraq {
 
+class RLPolicyInference;
+
 /// Simulation state snapshot — what is known after each tick.
 struct SimState {
     uint64_t        tick           { 0 };
@@ -38,6 +40,7 @@ struct SimState {
     float           avg_travel_time_s{ 0.0f }; ///< Average travel time of vehicles (s)
     float           throughput_vph { 0.0f }; ///< Cumulative throughput (veh/h)
     float           congestion_ratio{ 0.0f }; ///< Fraction of active fleet in queue [0.0 .. 1.0]
+    float           simulation_fps { 0.0f }; ///< Measured simulation updates per real-world second
     TrafficScenario scenario       { TrafficScenario::Medium };
     bool            running        { true };
 };
@@ -96,6 +99,13 @@ public:
 
     [[nodiscard]] const std::unordered_map<IntersectionId, TrafficSignalController>&
         signal_controllers() const noexcept { return signal_controllers_; }
+
+    /// Extract 12-dimensional normalized observation vector for an intersection
+    [[nodiscard]] std::vector<float> compute_rl_observation(IntersectionId id) const;
+
+    [[nodiscard]] std::shared_ptr<RLPolicyInference> shared_rl_policy() const noexcept {
+        return shared_rl_policy_;
+    }
 
     // ── Routing Engine ───────────────────────────────────────────────────
     void set_route_provider(std::shared_ptr<const IRouteProvider> provider) {
@@ -157,6 +167,9 @@ private:
     std::function<RoadNetwork()> network_factory_{};
     std::vector<IntersectionId>  allowed_origins_{};
     std::vector<IntersectionId>  allowed_destinations_{};
+    std::shared_ptr<RLPolicyInference> shared_rl_policy_{ nullptr };
+    float                        real_time_window_{ 0.0f };
+    uint32_t                     ticks_in_window_{ 0 };
 };
 
 } // namespace syntraq
