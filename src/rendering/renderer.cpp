@@ -222,7 +222,8 @@ SimControlAction Renderer::render_frame(
     const std::vector<Vehicle>&                                        vehicles,
     float                                                              current_speed_scale,
     const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
-    SignalControllerType                                               controller_type) {
+    SignalControllerType                                               controller_type,
+    RoutingStrategyType                                                active_routing) {
     update_camera(network);
 
     begin_frame();
@@ -239,7 +240,7 @@ SimControlAction Renderer::render_frame(
 
     // ── Screen Space HUD & UI Overlays ─────────────────────────────────────
     draw_status_bar(state, current_speed_scale);
-    SimControlAction action = draw_imgui(state, network, current_speed_scale, signal_controllers, controller_type);
+    SimControlAction action = draw_imgui(state, network, current_speed_scale, signal_controllers, controller_type, active_routing);
 
     end_frame();
 
@@ -1211,6 +1212,7 @@ void Renderer::draw_traffic_panel(
     const RoadNetwork&                                                 network,
     const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
     SignalControllerType                                               controller_type,
+    RoutingStrategyType                                                active_routing,
     SimControlAction&                                                  action) {
     const float screen_w = static_cast<float>(GetScreenWidth());
     const float screen_h = static_cast<float>(GetScreenHeight());
@@ -1242,6 +1244,11 @@ void Renderer::draw_traffic_panel(
         draw_traffic_information(state, network, action);
 
         ImGui::Spacing();
+        if (ImGui::CollapsingHeader("ROUTING ENGINE", ImGuiTreeNodeFlags_DefaultOpen)) {
+            draw_routing_strategy(active_routing, action);
+        }
+
+        ImGui::Spacing();
         if (ImGui::CollapsingHeader("TRAFFIC SIGNALS", ImGuiTreeNodeFlags_DefaultOpen)) {
             draw_signal_status(signal_controllers, controller_type, action);
         }
@@ -1249,16 +1256,58 @@ void Renderer::draw_traffic_panel(
     ImGui::End();
 }
 
+void Renderer::draw_routing_strategy(
+    RoutingStrategyType active_routing,
+    SimControlAction&   action) {
+    ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "ROUTING STRATEGY MODE");
+    ImGui::Separator();
+
+    const char* route_labels[] = { "Static (Dist)", "Traffic-Aware" };
+    const RoutingStrategyType route_types[] = {
+        RoutingStrategyType::Static,
+        RoutingStrategyType::TrafficAware
+    };
+
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float btn_w   = (avail_w - spacing) / 2.0f;
+
+    for (int i = 0; i < 2; ++i) {
+        if (i > 0) ImGui::SameLine();
+        const bool is_active = (active_routing == route_types[i]);
+        if (is_active) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.65f, 0.40f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.75f, 0.45f, 1.00f));
+        }
+
+        if (ImGui::Button(route_labels[i], ImVec2(btn_w, 24.0f))) {
+            action.request_routing_strategy = route_types[i];
+        }
+        if (ImGui::IsItemHovered()) {
+            if (i == 0) {
+                ImGui::SetTooltip("Static routing: based strictly on shortest road distance");
+            } else {
+                ImGui::SetTooltip("Traffic-aware routing: distance + congestion penalty + predicted delay");
+            }
+        }
+
+        if (is_active) {
+            ImGui::PopStyleColor(2);
+        }
+    }
+}
+
 SimControlAction Renderer::draw_imgui(
     const SimState&                                                    state,
     const RoadNetwork&                                                 network,
     float                                                              current_speed_scale,
     const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
-    SignalControllerType                                               controller_type) {
+    SignalControllerType                                               controller_type,
+    RoutingStrategyType                                                active_routing) {
     SimControlAction action;
 
     draw_simulation_panel(state, network, current_speed_scale, action);
-    draw_traffic_panel(state, network, signal_controllers, controller_type, action);
+    draw_traffic_panel(state, network, signal_controllers, controller_type, active_routing, action);
 
     return action;
 }
