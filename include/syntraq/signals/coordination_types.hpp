@@ -28,7 +28,8 @@ enum class CoordinatedDecision : uint8_t {
     ExtendGreenWave,    ///< Extending green to serve incoming upstream platoon (green wave)
     MitigateSpillback,  ///< Early green termination to prevent downstream queue spillback
     ShortenPhase,       ///< Early gap-out due to dissipated queue with waiting opposing traffic
-    SwitchPhase         ///< Normal transition to yellow (max green cap or starvation limit reached)
+    SwitchPhase,        ///< Normal transition to yellow (max green cap or starvation limit reached)
+    EmergencyPriority   ///< Emergency vehicle signal preemption override
 };
 
 [[nodiscard]] constexpr std::string_view to_string(CoordinatedDecision decision) noexcept {
@@ -39,6 +40,7 @@ enum class CoordinatedDecision : uint8_t {
         case CoordinatedDecision::MitigateSpillback:  return "MitigateSpillback";
         case CoordinatedDecision::ShortenPhase:       return "ShortenPhase";
         case CoordinatedDecision::SwitchPhase:        return "SwitchPhase";
+        case CoordinatedDecision::EmergencyPriority:  return "EmergencyPriority";
     }
     return "Unknown";
 }
