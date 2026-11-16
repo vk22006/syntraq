@@ -126,6 +126,19 @@ public:
     /// Clear stored neighbor states (e.g. at reset)
     void clear_neighbor_states() noexcept;
 
+    // ── Emergency Preemption ───────────────────────────────────────────────
+
+    void request_emergency_preemption(RoadId road_id) override;
+    void clear_emergency_preemption() override;
+
+    [[nodiscard]] bool has_emergency_preemption() const noexcept override {
+        return is_preempted_;
+    }
+
+    [[nodiscard]] RoadId emergency_preemption_road() const noexcept override {
+        return preemption_road_;
+    }
+
     // ── Explainable Telemetry & Inspection ─────────────────────────────────
 
     [[nodiscard]] CoordinatedDecision last_decision() const noexcept {
@@ -190,6 +203,9 @@ private:
     PhaseStage                                   current_stage_{ PhaseStage::Green };
     float                                        stage_elapsed_s_{ 0.0f };
     float                                        current_stage_duration_{ 10.0f };
+
+    RoadId                                       preemption_road_{ kInvalidRoadId };
+    bool                                         is_preempted_{ false };
 
     IntersectionLocalState                       local_state_{};
     std::vector<NeighborIntersectionState>       neighbor_states_{};
