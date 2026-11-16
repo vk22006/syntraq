@@ -10,6 +10,7 @@
 
 #include "syntraq/core/config.hpp"
 #include "syntraq/signals/network_coordination_manager.hpp"
+#include "syntraq/vehicles/emergency_priority_manager.hpp"
 #include "syntraq/signals/traffic_signal_controller.hpp"
 #include "syntraq/world/road_network.hpp"
 #include "syntraq/vehicles/vehicle.hpp"
@@ -113,6 +114,27 @@ public:
         return coordination_manager_;
     }
 
+    // ── Emergency Priority Subsystem ──────────────────────────────────────
+    [[nodiscard]] const EmergencyPriorityManager& emergency_manager() const noexcept {
+        return emergency_manager_;
+    }
+    [[nodiscard]]       EmergencyPriorityManager& emergency_manager()       noexcept {
+        return emergency_manager_;
+    }
+
+    bool trigger_emergency_vehicle(
+        IntersectionId source = kInvalidIntersectionId,
+        IntersectionId destination = kInvalidIntersectionId);
+
+    void set_emergency_priority_enabled(bool enabled) noexcept {
+        cfg_.enable_emergency_priority = enabled;
+        emergency_manager_.enable_preemption = enabled;
+    }
+    void set_emergency_rerouting_enabled(bool enabled) noexcept {
+        cfg_.enable_emergency_rerouting = enabled;
+        emergency_manager_.enable_rerouting = enabled;
+    }
+
     // ── Routing Engine ───────────────────────────────────────────────────
     void set_route_provider(std::shared_ptr<const IRouteProvider> provider) {
         spawner_.set_route_provider(std::move(provider));
@@ -181,6 +203,7 @@ private:
     std::shared_ptr<RLPolicyInference>  shared_rl_policy_{ nullptr };
     std::shared_ptr<TrafficAwareRouting> traffic_aware_router_{ nullptr };
     NetworkCoordinationManager          coordination_manager_{};
+    EmergencyPriorityManager            emergency_manager_{};
     float                               real_time_window_{ 0.0f };
     uint32_t                     ticks_in_window_{ 0 };
 };
