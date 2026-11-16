@@ -22,6 +22,7 @@ enum class TrafficScenario : uint8_t {
     Medium,
     High,
     RushHour,
+    EmergencyPriority,
     Custom,
 };
 
@@ -66,6 +67,11 @@ inline TrafficScenarioConfig get_scenario_preset(TrafficScenario scenario, uint3
             cfg.spawn_interval_s = 0.5f;
             cfg.max_vehicles     = 100;
             break;
+        case TrafficScenario::EmergencyPriority:
+            cfg.name             = "Emergency Priority";
+            cfg.spawn_interval_s = 1.0f;
+            cfg.max_vehicles     = 50;
+            break;
         case TrafficScenario::Custom:
             cfg.name             = "Custom";
             cfg.spawn_interval_s = 2.0f;
@@ -108,6 +114,11 @@ struct Config {
     float                default_all_red_duration_s{  2.0f };  ///< Interphase all-red clearance duration
     std::string          rl_model_path             { "models/traffic_signal_dqn.onnx" }; ///< ONNX policy path
     bool                 enable_rl_model           { true };   ///< Whether to attempt loading ONNX model for RL
+
+    // ── Emergency Priority & Corridor Management ─────────────────
+    bool                 enable_emergency_priority        { true };   ///< Enable traffic signal preemption for emergency vehicles
+    bool                 enable_emergency_rerouting       { true };   ///< Enable normal vehicle temporary rerouting around priority corridor
+    float                emergency_preemption_distance_m { 120.0f }; ///< Approach distance (metres) triggering signal preemption
 
     /// Load from a JSON file; returns default config on failure.
     static Config from_file(const std::string& path);
