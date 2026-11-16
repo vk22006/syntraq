@@ -79,6 +79,15 @@ void VehicleMovementSystem::update(
                 // If approaching the intersection, ensure entrance to next road is clear
                 if (dist_to_stop_line <= 15.0f) {
                     const float clearance_needed = v.length_m + v.min_gap_m;
+                    if (v.is_emergency() && next_road && next_road->lane_count() > 1) {
+                        for (uint32_t l = 0; l < next_road->lane_count(); ++l) {
+                            if (!is_lane_entrance_occupied(next_road_id, l, clearance_needed, vehicles, v_idx)) {
+                                target_lane = l;
+                                v.lane_index = l;
+                                break;
+                            }
+                        }
+                    }
                     if (is_lane_entrance_occupied(next_road_id, target_lane, clearance_needed, vehicles, v_idx)) {
                         can_proceed = false; // Hold at stop line until entry clears
                     }
@@ -86,7 +95,7 @@ void VehicleMovementSystem::update(
             }
 
             // ── Calculate desired cruising / turning speed ────────────────
-            float target_speed = std::min(v.max_speed_mps, road->speed_limit_mps);
+            float target_speed = v.is_emergency() ? v.max_speed_mps : std::min(v.max_speed_mps, road->speed_limit_mps);
 
             if (can_proceed && (v.route_index + 1 < v.route.size())) {
                 const float turn_speed = calculate_turn_speed(v, *road, network);
