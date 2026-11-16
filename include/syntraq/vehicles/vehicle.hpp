@@ -18,9 +18,25 @@
 
 #include "syntraq/world/ids.hpp"
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 namespace syntraq {
+
+// ── VehicleType ──────────────────────────────────────────────────────────────
+
+enum class VehicleType : uint8_t {
+  Regular,   ///< Standard passenger car or commercial vehicle
+  Emergency, ///< Priority emergency vehicle (ambulance, fire, police)
+};
+
+[[nodiscard]] constexpr std::string_view to_string(VehicleType type) noexcept {
+  switch (type) {
+    case VehicleType::Regular:   return "Regular";
+    case VehicleType::Emergency: return "Emergency";
+  }
+  return "Unknown";
+}
 
 // ── VehicleState ─────────────────────────────────────────────────────────────
 
@@ -35,6 +51,7 @@ enum class VehicleState : uint8_t {
 struct Vehicle {
   // ── Identity ───────────────────────────────────────────────────────────
   VehicleId id{kInvalidVehicleId};
+  VehicleType type{VehicleType::Regular}; ///< Regular passenger car vs Emergency priority vehicle
 
   // ── Route ──────────────────────────────────────────────────────────────
   std::vector<RoadId> route; ///< Ordered roads from spawn to destination
@@ -75,6 +92,10 @@ struct Vehicle {
 
   [[nodiscard]] bool has_arrived() const noexcept {
     return state == VehicleState::Arrived;
+  }
+
+  [[nodiscard]] bool is_emergency() const noexcept {
+    return type == VehicleType::Emergency;
   }
 
   /// Remaining route length including the current road.
