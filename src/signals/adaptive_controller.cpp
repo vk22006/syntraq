@@ -68,6 +68,82 @@ void AdaptiveController::observe_traffic(
 void AdaptiveController::tick(float dt) {
     if (phases_.empty() || dt <= 0.0f) return;
 
+    // ── Emergency Signal Preemption Priority Override ────────────────────────
+    if (emergency_preemption_road_ != kInvalidRoadId) {
+        size_t target_phase_idx = phases_.size();
+        for (size_t i = 0; i < phases_.size(); ++i) {
+            if (phases_[i].contains_road(emergency_preemption_road_)) {
+                target_phase_idx = i;
+                break;
+            }
+        }
+
+        if (target_phase_idx < phases_.size()) {
+            const auto& phase = phases_[current_phase_idx_];
+            if (current_phase_idx_ == target_phase_idx) {
+                if (current_stage_ == PhaseStage::Green) {
+                    // Hold green indefinitely while preemption request is active
+                    stage_elapsed_s_ += dt;
+                    last_decision_ = AdaptiveDecision::Hold;
+                    last_decision_reason_ = "Holding green for emergency preemption";
+                    update_lights();
+                    return;
+                } else if (current_stage_ == PhaseStage::Yellow) {
+                    stage_elapsed_s_ += dt;
+                    if (stage_elapsed_s_ >= phase.yellow_duration_s) {
+                        stage_elapsed_s_ = 0.0f;
+                        current_stage_ = (phase.all_red_duration_s > 0.0f)
+                                       ? PhaseStage::AllRed : PhaseStage::Green;
+                    }
+                    update_lights();
+                    return;
+                } else if (current_stage_ == PhaseStage::AllRed) {
+                    stage_elapsed_s_ += dt;
+                    if (stage_elapsed_s_ >= phase.all_red_duration_s) {
+                        stage_elapsed_s_ = 0.0f;
+                        current_stage_ = PhaseStage::Green;
+                    }
+                    update_lights();
+                    return;
+                }
+            } else {
+                // Conflicting phase: clear traffic safely and switch right-of-way
+                if (current_stage_ == PhaseStage::Green) {
+                    stage_elapsed_s_ += dt;
+                    constexpr float kMinSafetyGreen = 2.0f;
+                    if (stage_elapsed_s_ >= kMinSafetyGreen) {
+                        transition_to_yellow();
+                        last_decision_ = AdaptiveDecision::SwitchPhase;
+                        last_decision_reason_ = "Preempting signal phase for approaching emergency vehicle";
+                    }
+                    update_lights();
+                    return;
+                } else if (current_stage_ == PhaseStage::Yellow) {
+                    stage_elapsed_s_ += dt;
+                    if (stage_elapsed_s_ >= phase.yellow_duration_s) {
+                        stage_elapsed_s_ = 0.0f;
+                        current_stage_ = (phase.all_red_duration_s > 0.0f)
+                                       ? PhaseStage::AllRed : PhaseStage::Green;
+                        if (current_stage_ == PhaseStage::Green) {
+                            current_phase_idx_ = target_phase_idx;
+                        }
+                    }
+                    update_lights();
+                    return;
+                } else if (current_stage_ == PhaseStage::AllRed) {
+                    stage_elapsed_s_ += dt;
+                    if (stage_elapsed_s_ >= phase.all_red_duration_s) {
+                        stage_elapsed_s_ = 0.0f;
+                        current_phase_idx_ = target_phase_idx;
+                        current_stage_ = PhaseStage::Green;
+                    }
+                    update_lights();
+                    return;
+                }
+            }
+        }
+    }
+
     if (current_stage_ == PhaseStage::Green) {
         stage_elapsed_s_ += dt;
         evaluate_green_decision();
@@ -100,17 +176,27 @@ void AdaptiveController::tick(float dt) {
 }
 
 void AdaptiveController::reset() {
-    current_phase_idx_    = 0;
-    current_stage_        = PhaseStage::Green;
-    stage_elapsed_s_      = 0.0f;
-    last_decision_        = AdaptiveDecision::Hold;
-    last_decision_reason_ = "Controller reset";
-    extensions_count_     = 0;
-    shortenings_count_    = 0;
-    switches_count_       = 0;
+    current_phase_idx_         = 0;
+    current_stage_             = PhaseStage::Green;
+    stage_elapsed_s_           = 0.0f;
+    last_decision_             = AdaptiveDecision::Hold;
+    last_decision_reason_      = "Controller reset";
+    extensions_count_          = 0;
+    shortenings_count_         = 0;
+    switches_count_            = 0;
+    emergency_preemption_road_ = kInvalidRoadId;
     observed_queues_.clear();
     observed_wait_times_.clear();
     update_lights();
+}
+
+void AdaptiveController::request_emergency_preemption(RoadId road_id) {
+    emergency_preemption_road_ = road_id;
+}
+
+void AdaptiveController::clear_emergency_preemption() {
+    emergency_preemption_road_ = kInvalidRoadId;
+    stage_elapsed_s_ = 0.0f;
 }
 
 // ── Decision Logic ───────────────────────────────────────────────────────────
