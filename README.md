@@ -8,7 +8,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 
 ## Status
 
-> <u>**Note:**</u> SyntraQ is a research-oriented project and is currently **under active development**. Some features may be experimental or incomplete.
+> <u>**Note:**</u> SyntraQ is currently **under active development**. Some features may be experimental or incomplete.
 
 | System / Feature | Description | Status |
 |---|---|---|
@@ -30,6 +30,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | RL Traffic Signal Controller | PyTorch Double DQN, multi-seed evaluation, ONNX export, C++ inference | ✅ Complete |
 | Traffic-Aware Dynamic Routing | Multi-objective cost (distance + congestion + delay), Static vs TrafficAware | ✅ Complete |
 | Network-Level Coordinated Control | Multi-intersection coordination (Green-wave progression + spillback gating), network telemetry | ✅ Complete |
+| Emergency Priority Corridor | Emergency vehicle type, signal preemption & green hold, yielding & detour rerouting, zero-deadlock priority corridor | ✅ Complete |
  
 ---
  
@@ -41,7 +42,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (197 tests) |
+| Tests          | GoogleTest + CTest (205 tests across 16 suites) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
@@ -99,15 +100,22 @@ The simulator can run headlessly without Raylib/ImGui initialization, making it 
 # Run headless simulation for 120 seconds with seed 42 and High traffic
 .\build\bin\syntraq.exe --headless --duration 120 --scenario high --seed 42 --csv summary.csv
 
+# Run emergency priority corridor demonstration scenario
+.\build\bin\syntraq.exe --scenario emergency --controller adaptive --routing traffic-aware
+
 # Available CLI options:
 #   --headless, -h           Run without GUI/rendering
 #   --duration, -d <seconds> Simulation duration in seconds
 #   --seed <number>          Random seed for deterministic generation
-#   --scenario, -s <preset>  Traffic scenario preset: low, med, high, rush
+#   --scenario, -s <preset>  Traffic scenario preset: low, med, high, rush, emergency
 #   --controller <type>      Signal controller type: fixed, adaptive, rl, coordinated (default: fixed)
 #   --routing <strategy>     Routing strategy: static, traffic-aware (default: static)
 #   --rl-model <path>        Path to RL policy ONNX model
 #   --no-model               Run RL controller without model (safe heuristic fallback)
+#   --emergency              Trigger emergency vehicle spawn on startup
+#   --no-preemption          Disable emergency signal preemption
+#   --no-rerouting           Disable normal vehicle emergency detour rerouting
+#   --preemption-dist <m>    Emergency detection/preemption distance in meters (default: 120.0)
 #   --csv <path>             Export run summary metrics to CSV
 #   --csv-timeseries <path>  Export periodic snapshot time-series to CSV
 #   --screenshot <path>      Capture screenshot at start and exit
@@ -148,6 +156,7 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+.\build\bin\test_emergency_priority.exe
 .\build\bin\test_coordinated_control.exe
 .\build\bin\test_route_cost.exe
 .\build\bin\test_rl_controller.exe
@@ -477,6 +486,58 @@ python scripts/analyze_coordination_comparison.py
 
 ---
 
+## Emergency Priority & Green Corridors
+
+SyntraQ introduces an emergency priority system capable of dynamically clearing green corridors for first-responder vehicles while preventing network-wide deadlocks and minimizing normal traffic disruption:
+
+```powershell
+# 1. Run emergency priority demonstration scenario with GUI
+.\build\bin\syntraq.exe --scenario emergency --controller adaptive --routing traffic-aware
+
+# 2. Run automated multi-seed priority benchmark
+.\build\bin\syntraq_compare_emergency_priority.exe
+
+# 3. Process results and generate comparative visualization
+python scripts/analyze_emergency_priority.py
+```
+
+### Priority Architecture & Multi-Layer Response
+
+```
+               [Approaching Vehicle Detection (d <= 120m)]
+                                   │
+         ┌─────────────────────────┴─────────────────────────┐
+         ▼                                                   ▼
+[Signal Preemption & Hold]                        [Dynamic Route Detours & Yielding]
+  • Safe clearance (yellow -> all-red)              • Corridor link cost penalty (+500 cost)
+  • Immediate green grant & hold                    • Normal vehicles avoid active corridor
+  • Auto-release upon vehicle exit                  • Multi-lane entry yields to emergency unit
+```
+
+- **Emergency Vehicle Kinematics & Rendering**: Emergency units operate with prioritized dynamics ($v_{\max} = 20\,\text{m/s} = 72\,\text{km/h}$, $a = 4.5\,\text{m/s}^2$, $d = 7.0\,\text{m/s}^2$, headway $T = 0.8\,\text{s}$). Visually rendered with high-visibility red-white livery, dynamic pulsing siren halos, and alternating red/blue rooftop strobes.
+- **Approaching Vehicle Detection**: `EmergencyPriorityManager` tracks active emergency vehicles and queries road linkages up to $120\,\text{m}$ upstream of upcoming intersections.
+- **Signal Preemption & Safe Clearance**: When an approaching emergency vehicle is detected, downstream controllers (`FixedTimeController`, `AdaptiveController`, `CoordinatedController`) execute safe yellow and all-red clearance intervals before forcing green for the emergency approach. The phase is held green until the emergency vehicle exits the intersection.
+- **Dynamic Detour Rerouting & Lane Yielding**: Normal vehicles running `TrafficAwareRouting` automatically penalize active emergency corridor road segments ($+500.0$), steering surrounding traffic away from the emergency route. Normal vehicles yield lanes during intersection maneuvers, preventing blockages without triggering gridlock.
+- **Zero Deadlock Verification**: Preemption releases immediately when the vehicle clears the junction. Cross-traffic queues resume standard adaptive/fixed-time servicing, ensuring zero trapped vehicles or permanent gridlock.
+
+### Empirical Priority Benchmark (Multi-Seed Evaluation)
+
+| Metric | Baseline (No Priority) | Signal Preemption Only | Full Priority Corridor (Preemption + Rerouting) | Relative Change |
+| :--- | :---: | :---: | :---: | :---: |
+| **Emergency Travel Time** | $34.7\,\text{s} \pm 7.0\,\text{s}$ | $26.9\,\text{s} \pm 6.0\,\text{s}$ | **$24.1\,\text{s} \pm 2.1\,\text{s}$** | **$-30.5\%$** |
+| **Emergency Waiting Time** | $5.6\,\text{s} \pm 1.8\,\text{s}$ | **$0.0\,\text{s} \pm 0.0\,\text{s}$** | **$0.0\,\text{s} \pm 0.0\,\text{s}$** | **$-100.0\%$** |
+| **Emergency Average Speed** | $44.9\,\text{km/h}$ | $58.3\,\text{km/h}$ | **$58.8\,\text{km/h}$** | **$+31.1\%$** |
+| **Normal Traffic Travel Time** | $41.2\,\text{s} \pm 5.1\,\text{s}$ | $41.8\,\text{s} \pm 5.3\,\text{s}$ | $45.6\,\text{s} \pm 4.3\,\text{s}$ | $+10.7\%$ (detour penalty) |
+| **Normal Traffic Throughput** | $6.0 \pm 1.0\,\text{veh}$ | $6.0 \pm 1.0\,\text{veh}$ | $5.6 \pm 0.9\,\text{veh}$ | Stable throughput |
+| **Network Congestion Ratio** | $12.5\%$ | $12.7\%$ | $13.6\%$ | No gridlock / zero deadlock |
+
+### Artifacts & Reports
+- **Detailed Evaluation Report**: [docs/emergency_priority_comparison.md](docs/emergency_priority_comparison.md)
+- **Comparative 4-Panel Visualization**: [docs/emergency_priority_comparison.png](docs/emergency_priority_comparison.png)
+- **Evaluation Summary CSV**: `data/emergency_priority_summary.csv`
+
+---
+
 ## Project Structure
 
 ```
@@ -484,7 +545,7 @@ SyntraQ/
 ├── include/syntraq/
 │   ├── core/          # Config and shared types (.hpp)
 │   ├── world/         # Road network graph (Intersections & Roads) (.hpp)
-│   ├── vehicles/      # Vehicle kinematics, car-following, and spawner (.hpp)
+│   ├── vehicles/      # Vehicle kinematics, emergency priority manager, car-following, spawner (.hpp)
 │   ├── signals/       # Traffic signals (Interface, FixedTime, Adaptive, RL, Coordinated) (.hpp)
 │   ├── routing/       # Routing engine (Dijkstra, A*, Heuristics, Costs) (.hpp)
 │   ├── metrics/       # Telemetry & ML dataset collectors (.hpp)
@@ -494,7 +555,7 @@ SyntraQ/
 ├── src/
 │   ├── core/          # Config implementation
 │   ├── world/         # Road network implementation & single-intersection topology
-│   ├── vehicles/      # Kinematics and queue formation systems
+│   ├── vehicles/      # Kinematics, emergency priority manager, and queue formation systems
 │   ├── signals/       # FixedTimeController, AdaptiveController, RLSignalController, RLController, CoordinatedController, NetworkCoordinationManager
 │   ├── routing/       # Dijkstra, A*, and graph generator
 │   ├── metrics/       # Telemetry collector, ML data generator, CSV exporters
@@ -502,9 +563,9 @@ SyntraQ/
 │   ├── simulation/    # Simulation loop & scenario management
 │   ├── rendering/     # Renderer and three-panel UI layout
 │   └── main.cpp       # CLI parsing and application entry point
-├── experiments/       # Baseline experiments, controller comparison, and dataset generator
+├── experiments/       # Baseline experiments, controller comparison, emergency priority benchmark, and dataset generator
 ├── scripts/           # ML training, DQN pipeline, ONNX exporter, Gymnasium env
-├── tests/             # GoogleTest & Python test suites (163 C++ tests + 6 Python tests)
+├── tests/             # GoogleTest & Python test suites (205 C++ tests + 6 Python tests)
 ├── benchmarks/        # Routing engine benchmarks (Dijkstra vs A*)
 ├── configs/           # Scenario JSON configurations
 ├── data/              # Experiment datasets, ML training data, and reference validation sets
