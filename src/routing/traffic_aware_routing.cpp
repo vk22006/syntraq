@@ -118,8 +118,21 @@ RoadTrafficCondition TrafficAwareRouting::condition_for(RoadId id) const noexcep
     return RoadTrafficCondition{};
 }
 
+void TrafficAwareRouting::set_emergency_corridor_roads(std::unordered_set<RoadId> roads) {
+    emergency_corridor_roads_ = std::move(roads);
+}
+
+void TrafficAwareRouting::clear_emergency_corridor_roads() noexcept {
+    emergency_corridor_roads_.clear();
+}
+
 float TrafficAwareRouting::compute_road_cost(const Road& road) const noexcept {
-    return cost_model_(road);
+    float cost = cost_model_(road);
+    if (!emergency_corridor_roads_.empty() &&
+        emergency_corridor_roads_.find(road.id) != emergency_corridor_roads_.end()) {
+        cost += cost_model_.config().emergency_corridor_penalty;
+    }
+    return cost;
 }
 
 RouteResult TrafficAwareRouting::find_route_with_info(
