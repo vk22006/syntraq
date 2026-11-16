@@ -31,6 +31,9 @@ int main(int argc, char* argv[]) {
     std::optional<syntraq::RoutingStrategyType> cli_routing;
     std::string cli_rl_model;
     bool cli_no_model = false;
+    std::optional<bool> cli_preemption;
+    std::optional<bool> cli_rerouting;
+    std::optional<float> cli_preemption_dist;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -58,7 +61,17 @@ int main(int argc, char* argv[]) {
                 cli_scenario = syntraq::TrafficScenario::High;
             } else if (sc == "rush" || sc == "rushhour" || sc == "RushHour") {
                 cli_scenario = syntraq::TrafficScenario::RushHour;
+            } else if (sc == "emergency" || sc == "Emergency" || sc == "EmergencyPriority") {
+                cli_scenario = syntraq::TrafficScenario::EmergencyPriority;
             }
+        } else if (arg == "--emergency") {
+            cli_scenario = syntraq::TrafficScenario::EmergencyPriority;
+        } else if (arg == "--no-preemption") {
+            cli_preemption = false;
+        } else if (arg == "--no-rerouting") {
+            cli_rerouting = false;
+        } else if (arg == "--preemption-dist" && i + 1 < argc) {
+            cli_preemption_dist = std::stof(argv[++i]);
         } else if ((arg == "--csv" || arg == "--csv-summary") && i + 1 < argc) {
             csv_summary_path = argv[++i];
         } else if (arg == "--csv-timeseries" && i + 1 < argc) {
@@ -111,6 +124,15 @@ int main(int argc, char* argv[]) {
     if (cli_scenario.has_value()) {
         cfg.scenario = *cli_scenario;
     }
+    if (cli_preemption.has_value()) {
+        cfg.enable_emergency_priority = *cli_preemption;
+    }
+    if (cli_rerouting.has_value()) {
+        cfg.enable_emergency_rerouting = *cli_rerouting;
+    }
+    if (cli_preemption_dist.has_value()) {
+        cfg.emergency_preemption_distance_m = *cli_preemption_dist;
+    }
     if (cli_controller.has_value()) {
         cfg.signal_controller_type = *cli_controller;
     }
@@ -148,8 +170,17 @@ int main(int argc, char* argv[]) {
                   << " Max Queue Length : " << res.max_queue_length << " vehicles\n"
                   << " Avg Queue Length : " << res.avg_queue_length << " vehicles\n"
                   << " Throughput       : " << res.throughput_vph << " veh/h (" << res.throughput_vps << " veh/s)\n"
-                  << " Congestion Ratio : " << (res.congestion_ratio * 100.0f) << "%\n"
-                  << "======================================================\n\n";
+                  << " Congestion Ratio : " << (res.congestion_ratio * 100.0f) << "%\n";
+        if (res.emergency_completed > 0) {
+            std::cout << " Emergency Completed : " << res.emergency_completed << " trips\n"
+                      << " Emerg Avg Travel Time: " << res.emergency_avg_travel_time_s << " s\n"
+                      << " Emerg Avg Wait Time  : " << res.emergency_avg_waiting_time_s << " s\n"
+                      << " Emerg Avg Speed      : " << res.emergency_avg_speed_mps << " m/s (" << (res.emergency_avg_speed_mps * 3.6f) << " km/h)\n"
+                      << " Normal Avg Travel Time : " << res.normal_avg_travel_time_s << " s\n"
+                      << " Normal Avg Wait Time   : " << res.normal_avg_waiting_time_s << " s\n"
+                      << " Normal Avg Speed       : " << res.normal_avg_speed_mps << " m/s (" << (res.normal_avg_speed_mps * 3.6f) << " km/h)\n";
+        }
+        std::cout << "======================================================\n\n";
 
         if (!csv_summary_path.empty()) {
             if (sim.export_summary_csv(csv_summary_path)) {
@@ -201,7 +232,8 @@ int main(int argc, char* argv[]) {
                                                   sim.time_scale(),
                                                   &sim.signal_controllers(),
                                                   sim.signal_controller_type(),
-                                                  sim.routing_strategy_type());
+                                                  sim.routing_strategy_type(),
+                                                  &sim.emergency_manager().status());
 
         if (action.request_pause_toggle) {
             sim.set_paused(!sim.is_paused());
@@ -220,6 +252,15 @@ int main(int argc, char* argv[]) {
         }
         if (action.request_routing_strategy.has_value()) {
             sim.set_routing_strategy_type(*action.request_routing_strategy);
+        }
+        if (action.request_trigger_emergency) {
+            sim.trigger_emergency_vehicle();
+        }
+        if (action.request_emergency_priority_toggle.has_value()) {
+            sim.set_emergency_priority_enabled(*action.request_emergency_priority_toggle);
+        }
+        if (action.request_emergency_rerouting_toggle.has_value()) {
+            sim.set_emergency_rerouting_enabled(*action.request_emergency_rerouting_toggle);
         }
 
         frame_count++;
