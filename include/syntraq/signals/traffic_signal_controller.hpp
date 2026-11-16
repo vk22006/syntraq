@@ -120,6 +120,12 @@ public:
         return dynamic_cast<const T*>(impl_.get()) != nullptr;
     }
 
+    // ── Emergency Signal Preemption ────────────────────────────────────────
+    void request_emergency_preemption(RoadId road_id);
+    void clear_emergency_preemption();
+    [[nodiscard]] bool has_emergency_preemption() const noexcept;
+    [[nodiscard]] RoadId emergency_preemption_road() const noexcept;
+
     // ── Factory Helpers ────────────────────────────────────────────────────
 
     static TrafficSignalController make_fixed_time(
