@@ -35,6 +35,13 @@ public:
                                      uint32_t             active_count,
                                      float                sim_elapsed_s);
 
+    /// Spawn a high-priority emergency vehicle with accelerated kinematics.
+    std::optional<Vehicle> spawn_emergency_vehicle(
+        const RoadNetwork&          network,
+        IntersectionId              source,
+        IntersectionId              destination,
+        const std::vector<Vehicle>& existing_vehicles);
+
     /// Re-seed the random number generator (for repeatable scenarios).
     void set_seed(uint32_t seed);
 
