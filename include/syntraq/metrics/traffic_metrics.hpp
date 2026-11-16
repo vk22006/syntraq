@@ -35,6 +35,16 @@ struct MetricSnapshot {
     uint32_t max_queue_length{ 0 };   ///< Longest queue on any single lane at this tick
     float    throughput_vph  { 0.0f }; ///< Cumulative throughput (vehicles per hour)
     float    congestion_ratio{ 0.0f }; ///< queued_vehicles / active_vehicles [0.0 .. 1.0]
+
+    // Emergency Subsystem Telemetry
+    uint32_t emergency_active       { 0 };
+    uint32_t emergency_completed    { 0 };
+    float    emergency_avg_speed_mps{ 0.0f };
+    float    emergency_avg_wait_s   { 0.0f };
+    float    emergency_avg_travel_s { 0.0f };
+    float    normal_avg_speed_mps   { 0.0f };
+    float    normal_avg_wait_s      { 0.0f };
+    float    normal_avg_travel_s    { 0.0f };
 };
 
 // ── RunResult ─────────────────────────────────────────────────────────────────
@@ -68,6 +78,15 @@ struct RunResult {
     float           throughput_vps  { 0.0f }; ///< Completed vehicles per simulated second
     float           throughput_vph  { 0.0f }; ///< Completed vehicles per simulated hour (vps * 3600)
     float           congestion_ratio{ 0.0f }; ///< Time-mean fraction of active vehicles in queue
+
+    // Emergency Subsystem Comparative Metrics
+    uint32_t        emergency_completed{ 0 };
+    float           emergency_avg_travel_time_s{ 0.0f };
+    float           emergency_avg_waiting_time_s{ 0.0f };
+    float           emergency_avg_speed_mps{ 0.0f };
+    float           normal_avg_travel_time_s{ 0.0f };
+    float           normal_avg_waiting_time_s{ 0.0f };
+    float           normal_avg_speed_mps   { 0.0f };
 
     /// Returns standard CSV header row for summary runs.
     [[nodiscard]] static std::string csv_header();
@@ -135,6 +154,16 @@ private:
     double          completed_travel_time_s_{ 0.0 };
     double          completed_wait_time_s_  { 0.0 };
     double          completed_distance_m_   { 0.0 };
+
+    uint32_t        emergency_completed_    { 0 };
+    double          emergency_travel_time_s_{ 0.0 };
+    double          emergency_wait_time_s_  { 0.0 };
+    double          emergency_distance_m_   { 0.0 };
+
+    uint32_t        normal_completed_       { 0 };
+    double          normal_travel_time_s_   { 0.0 };
+    double          normal_wait_time_s_     { 0.0 };
+    double          normal_distance_m_      { 0.0 };
 
     // Time-averaged fleet accumulators
     double          sum_speed_samples_      { 0.0 };
