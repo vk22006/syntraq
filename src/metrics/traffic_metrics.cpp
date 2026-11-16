@@ -20,7 +20,9 @@ std::string RunResult::csv_header() {
     return "scenario,seed,duration_s,total_ticks,total_spawned,total_completed,"
            "active_remaining,avg_speed_mps,avg_speed_kmh,avg_waiting_time_s,"
            "avg_travel_time_s,max_queue_length,avg_queue_length,throughput_vps,"
-           "throughput_vph,congestion_ratio";
+           "throughput_vph,congestion_ratio,emergency_completed,"
+           "emergency_avg_travel_time_s,emergency_avg_waiting_time_s,emergency_avg_speed_mps,"
+           "normal_avg_travel_time_s,normal_avg_waiting_time_s,normal_avg_speed_mps";
 }
 
 std::string RunResult::to_csv_row() const {
@@ -41,7 +43,14 @@ std::string RunResult::to_csv_row() const {
        << avg_queue_length << ","
        << throughput_vps << ","
        << throughput_vph << ","
-       << congestion_ratio;
+       << congestion_ratio << ","
+       << emergency_completed << ","
+       << emergency_avg_travel_time_s << ","
+       << emergency_avg_waiting_time_s << ","
+       << emergency_avg_speed_mps << ","
+       << normal_avg_travel_time_s << ","
+       << normal_avg_waiting_time_s << ","
+       << normal_avg_speed_mps;
     return ss.str();
 }
 
@@ -93,6 +102,16 @@ void TrafficMetricsCollector::reset() {
     completed_wait_time_s_   = 0.0;
     completed_distance_m_    = 0.0;
 
+    emergency_completed_     = 0;
+    emergency_travel_time_s_ = 0.0;
+    emergency_wait_time_s_   = 0.0;
+    emergency_distance_m_    = 0.0;
+
+    normal_completed_        = 0;
+    normal_travel_time_s_    = 0.0;
+    normal_wait_time_s_      = 0.0;
+    normal_distance_m_       = 0.0;
+
     sum_speed_samples_    = 0.0;
     speed_sample_count_   = 0;
     sum_queued_vehicles_  = 0.0;
@@ -108,6 +127,18 @@ void TrafficMetricsCollector::record_arrival(const Vehicle& arrived_vehicle) {
     completed_travel_time_s_ += static_cast<double>(arrived_vehicle.travel_time_s);
     completed_wait_time_s_   += static_cast<double>(arrived_vehicle.wait_time_s);
     completed_distance_m_    += static_cast<double>(arrived_vehicle.distance_m);
+
+    if (arrived_vehicle.is_emergency()) {
+        emergency_completed_++;
+        emergency_travel_time_s_ += static_cast<double>(arrived_vehicle.travel_time_s);
+        emergency_wait_time_s_   += static_cast<double>(arrived_vehicle.wait_time_s);
+        emergency_distance_m_    += static_cast<double>(arrived_vehicle.distance_m);
+    } else {
+        normal_completed_++;
+        normal_travel_time_s_    += static_cast<double>(arrived_vehicle.travel_time_s);
+        normal_wait_time_s_      += static_cast<double>(arrived_vehicle.wait_time_s);
+        normal_distance_m_       += static_cast<double>(arrived_vehicle.distance_m);
+    }
 }
 
 void TrafficMetricsCollector::record_tick(float                       dt,
@@ -124,6 +155,16 @@ void TrafficMetricsCollector::record_tick(float                       dt,
     double   sum_waits          = 0.0;
     double   sum_travels        = 0.0;
 
+    uint32_t emerg_count        = 0;
+    double   emerg_speeds       = 0.0;
+    double   emerg_waits        = 0.0;
+    double   emerg_travels      = 0.0;
+
+    uint32_t norm_count         = 0;
+    double   norm_speeds        = 0.0;
+    double   norm_waits         = 0.0;
+    double   norm_travels       = 0.0;
+
     // Track lane queue depths for max queue detection
     std::map<std::pair<RoadId, uint32_t>, uint32_t> lane_queues;
 
@@ -131,6 +172,18 @@ void TrafficMetricsCollector::record_tick(float                       dt,
         sum_speeds  += static_cast<double>(v.speed_mps);
         sum_waits   += static_cast<double>(v.wait_time_s);
         sum_travels += static_cast<double>(v.travel_time_s);
+
+        if (v.is_emergency()) {
+            emerg_count++;
+            emerg_speeds  += static_cast<double>(v.speed_mps);
+            emerg_waits   += static_cast<double>(v.wait_time_s);
+            emerg_travels += static_cast<double>(v.travel_time_s);
+        } else {
+            norm_count++;
+            norm_speeds   += static_cast<double>(v.speed_mps);
+            norm_waits    += static_cast<double>(v.wait_time_s);
+            norm_travels  += static_cast<double>(v.travel_time_s);
+        }
 
         const bool is_queued = (v.state == VehicleState::Stopped || v.speed_mps < 0.5f);
         if (is_queued) {
@@ -181,6 +234,17 @@ void TrafficMetricsCollector::record_tick(float                       dt,
         ? (static_cast<float>(total_completed_) / elapsed_s_) * 3600.0f
         : 0.0f;
     current_snapshot_.congestion_ratio = congestion_ratio;
+
+    // Emergency vs normal snapshots
+    current_snapshot_.emergency_active    = emerg_count;
+    current_snapshot_.emergency_completed = emergency_completed_;
+    current_snapshot_.emergency_avg_speed_mps = (emerg_count > 0) ? static_cast<float>(emerg_speeds / emerg_count) : 0.0f;
+    current_snapshot_.emergency_avg_wait_s    = (emerg_count > 0) ? static_cast<float>(emerg_waits / emerg_count) : 0.0f;
+    current_snapshot_.emergency_avg_travel_s  = (emerg_count > 0) ? static_cast<float>(emerg_travels / emerg_count) : 0.0f;
+
+    current_snapshot_.normal_avg_speed_mps = (norm_count > 0) ? static_cast<float>(norm_speeds / norm_count) : 0.0f;
+    current_snapshot_.normal_avg_wait_s    = (norm_count > 0) ? static_cast<float>(norm_waits / norm_count) : 0.0f;
+    current_snapshot_.normal_avg_travel_s  = (norm_count > 0) ? static_cast<float>(norm_travels / norm_count) : 0.0f;
 
     timeseries_.push_back(current_snapshot_);
 }
@@ -236,6 +300,21 @@ RunResult TrafficMetricsCollector::get_run_result() const {
     result.congestion_ratio = (total_ticks_ > 0)
         ? static_cast<float>(sum_congestion_ratio_ / static_cast<double>(total_ticks_))
         : 0.0f;
+
+    // Emergency vs normal metrics
+    result.emergency_completed = emergency_completed_;
+    if (emergency_completed_ > 0) {
+        result.emergency_avg_travel_time_s  = static_cast<float>(emergency_travel_time_s_ / emergency_completed_);
+        result.emergency_avg_waiting_time_s = static_cast<float>(emergency_wait_time_s_ / emergency_completed_);
+        result.emergency_avg_speed_mps      = (emergency_travel_time_s_ > 0.0)
+            ? static_cast<float>(emergency_distance_m_ / emergency_travel_time_s_) : 0.0f;
+    }
+    if (normal_completed_ > 0) {
+        result.normal_avg_travel_time_s  = static_cast<float>(normal_travel_time_s_ / normal_completed_);
+        result.normal_avg_waiting_time_s = static_cast<float>(normal_wait_time_s_ / normal_completed_);
+        result.normal_avg_speed_mps      = (normal_travel_time_s_ > 0.0)
+            ? static_cast<float>(normal_distance_m_ / normal_travel_time_s_) : 0.0f;
+    }
 
     return result;
 }
