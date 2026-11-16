@@ -99,6 +99,16 @@ public:
                            float  yellow_s,
                            float  all_red_s);
 
+    // ── Emergency Signal Preemption ────────────────────────────────────────
+    void request_emergency_preemption(RoadId road_id) override;
+    void clear_emergency_preemption() override;
+    [[nodiscard]] bool has_emergency_preemption() const noexcept override {
+        return emergency_preemption_road_ != kInvalidRoadId;
+    }
+    [[nodiscard]] RoadId emergency_preemption_road() const noexcept override {
+        return emergency_preemption_road_;
+    }
+
     // ── Factory Helpers ────────────────────────────────────────────────────
 
     /// Build a standard fixed-time 2-phase controller for an intersection
@@ -120,6 +130,7 @@ private:
     size_t     current_phase_idx_{ 0 };
     PhaseStage current_stage_    { PhaseStage::Green };
     float      stage_elapsed_s_  { 0.0f };
+    RoadId     emergency_preemption_road_{ kInvalidRoadId };
 
     std::unordered_map<RoadId, TrafficLight> lights_;
 };
