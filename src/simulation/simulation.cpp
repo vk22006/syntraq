@@ -145,6 +145,19 @@ void Simulation::tick() {
         traffic_aware_router_->update_from_simulation(network_, vehicles_);
     }
 
+    // ── Emergency Priority Subsystem (Preemption, Corridor, Yielding, Detour) ──
+    emergency_manager_.enable_preemption     = cfg_.enable_emergency_priority;
+    emergency_manager_.enable_rerouting      = cfg_.enable_emergency_rerouting;
+    emergency_manager_.preemption_distance_m = cfg_.emergency_preemption_distance_m;
+    emergency_manager_.update(network_, vehicles_, signal_controllers_, traffic_aware_router_.get(), cfg_.dt_seconds);
+
+    // ── Auto-dispatch emergency vehicle under Emergency Priority scenario ─
+    if (cfg_.scenario == TrafficScenario::EmergencyPriority) {
+        if (emergency_manager_.status().active_emergency_count == 0 && state_.elapsed_s >= 2.0f) {
+            trigger_emergency_vehicle();
+        }
+    }
+
     // ── 2. Try to spawn a new vehicle (with lane occupancy checks) ────────
     auto opt = spawner_.try_spawn(network_,
                                   vehicles_,
@@ -256,6 +269,7 @@ void Simulation::reset() {
     }
     coordination_manager_.build_topology(network_, signal_controllers_);
     metrics_collector_.reset();
+    emergency_manager_.reset();
     metrics_collector_.set_scenario(cfg_.scenario, scenario_cfg_.name);
     metrics_collector_.set_seed(scenario_cfg_.seed);
     data_collector_.reset();
@@ -419,6 +433,7 @@ void Simulation::despawn_arrived() {
 
     for (const auto& v : vehicles_) {
         if (v.state == VehicleState::Arrived) {
+            emergency_manager_.record_vehicle_arrival(v);
             metrics_collector_.record_arrival(v);
         }
     }
@@ -432,6 +447,39 @@ void Simulation::despawn_arrived() {
 
     const auto after   = static_cast<uint32_t>(vehicles_.size());
     state_.total_arrived += (before - after);
+}
+
+bool Simulation::trigger_emergency_vehicle(IntersectionId source, IntersectionId destination) {
+    if (network_.intersection_count() < 2) return false;
+
+    if (source == kInvalidIntersectionId || destination == kInvalidIntersectionId || source == destination) {
+        if (!allowed_origins_.empty() && !allowed_destinations_.empty()) {
+            source = allowed_origins_.front();
+            destination = allowed_destinations_.back();
+            if (source == destination && allowed_destinations_.size() > 1) {
+                destination = allowed_destinations_.front();
+            }
+        } else {
+            auto it = network_.intersections().begin();
+            source = it->first;
+            destination = it->first;
+            for (const auto& [id, _] : network_.intersections()) {
+                if (id != source) {
+                    destination = id;
+                }
+            }
+        }
+    }
+
+    if (source == destination) return false;
+
+    auto opt = spawner_.spawn_emergency_vehicle(network_, source, destination, vehicles_);
+    if (opt.has_value()) {
+        vehicles_.push_back(std::move(*opt));
+        state_.total_spawned++;
+        return true;
+    }
+    return false;
 }
 
 std::vector<float> Simulation::compute_rl_observation(IntersectionId id) const {
