@@ -116,6 +116,59 @@ std::optional<Vehicle> VehicleSpawner::try_spawn(const RoadNetwork& network,
     return try_spawn(network, dummy_vehicles, sim_elapsed_s);
 }
 
+std::optional<Vehicle> VehicleSpawner::spawn_emergency_vehicle(
+    const RoadNetwork&          network,
+    IntersectionId              source,
+    IntersectionId              destination,
+    const std::vector<Vehicle>& existing_vehicles)
+{
+    if (source == destination || source == kInvalidIntersectionId || destination == kInvalidIntersectionId) {
+        return std::nullopt;
+    }
+
+    auto route = build_route(network, source, destination);
+    if (route.empty()) return std::nullopt;
+
+    const Road* first_road = network.road(route[0]);
+    if (!first_road || first_road->lane_count() == 0) return std::nullopt;
+
+    // Pick best available lane (or lane 0)
+    uint32_t chosen_lane = 0;
+    constexpr float kSpawnClearanceBufferM = 8.0f;
+    for (uint32_t l = 0; l < first_road->lane_count(); ++l) {
+        bool occupied = false;
+        for (const auto& v : existing_vehicles) {
+            if (v.state == VehicleState::Arrived) continue;
+            if (v.current_road == route[0] && v.lane_index == l && v.progress_m < kSpawnClearanceBufferM) {
+                occupied = true;
+                break;
+            }
+        }
+        if (!occupied) {
+            chosen_lane = l;
+            break;
+        }
+    }
+
+    Vehicle v;
+    v.id             = static_cast<VehicleId>(next_vehicle_id_++);
+    v.type           = VehicleType::Emergency;
+    v.route          = std::move(route);
+    v.route_index    = 0;
+    v.destination    = destination;
+    v.current_road   = v.route[0];
+    v.lane_index     = chosen_lane;
+    v.progress_m     = 0.0f;
+    v.speed_mps      = std::min(10.0f, first_road->speed_limit_mps);
+    v.max_speed_mps  = 20.0f;  // ~72 km/h response speed
+    v.accel_mps2     = 4.5f;
+    v.decel_mps2     = 7.0f;
+    v.time_headway_s = 0.8f;
+    v.state          = VehicleState::Moving;
+
+    return v;
+}
+
 // ── build_route ───────────────────────────────────────────────────────────────
 
 std::vector<RoadId> VehicleSpawner::build_route(const RoadNetwork& network,
