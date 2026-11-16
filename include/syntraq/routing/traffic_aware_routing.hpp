@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace syntraq {
@@ -63,6 +64,18 @@ public:
     void update_from_queues(const std::unordered_map<RoadId, uint32_t>& queues,
                             const std::unordered_map<RoadId, float>& avg_speeds = {});
 
+    // ── Emergency Priority Corridor Rerouting ────────────────────────────
+
+    /// Set the road IDs currently part of an active emergency vehicle priority corridor
+    void set_emergency_corridor_roads(std::unordered_set<RoadId> roads);
+
+    /// Clear all active emergency corridor road designations
+    void clear_emergency_corridor_roads() noexcept;
+
+    [[nodiscard]] const std::unordered_set<RoadId>& emergency_corridor_roads() const noexcept {
+        return emergency_corridor_roads_;
+    }
+
     // ── Pluggable Delay Estimation (Decoupled from AI models) ─────────────
 
     /// Attach a custom delay prediction function (e.g. ML inference wrapper, heuristic, or analytic model)
@@ -84,6 +97,7 @@ public:
 private:
     TrafficAwareRoadCost                             cost_model_;
     std::unordered_map<RoadId, RoadTrafficCondition> conditions_{};
+    std::unordered_set<RoadId>                       emergency_corridor_roads_{};
     std::unique_ptr<AStarRouter>                     router_{ nullptr };
 
     void setup_router();
