@@ -61,12 +61,13 @@ using TrafficConditionProvider = std::function<RoadTrafficCondition(RoadId id)>;
 
 /// Configuration weights for traffic-aware cost computation.
 struct TrafficAwareCostConfig {
-    float distance_weight       { 1.0f };  ///< Weight applied to raw distance (m)
-    float congestion_weight     { 1.0f };  ///< Weight applied to congestion penalty
-    float delay_weight          { 1.0f };  ///< Weight applied to predicted delay cost
-    float queue_penalty_per_veh { 25.0f }; ///< Penalty per queued vehicle in equivalent metres (m/veh)
-    float delay_to_cost_factor  { 13.89f };///< Scaling factor converting delay (s) to equivalent distance cost (m/s)
-    float jam_density_penalty   { 100.0f };///< Additional scaling penalty as congestion approaches 1.0
+    float distance_weight          { 1.0f };   ///< Weight applied to raw distance (m)
+    float congestion_weight        { 1.0f };   ///< Weight applied to congestion penalty
+    float delay_weight             { 1.0f };   ///< Weight applied to predicted delay cost
+    float queue_penalty_per_veh    { 25.0f };  ///< Penalty per queued vehicle in equivalent metres (m/veh)
+    float delay_to_cost_factor     { 13.89f }; ///< Scaling factor converting delay (s) to equivalent distance cost (m/s)
+    float jam_density_penalty      { 100.0f }; ///< Additional scaling penalty as congestion approaches 1.0
+    float emergency_corridor_penalty{ 500.0f };///< Additional detour penalty for active emergency corridor roads (m)
 };
 
 /// Traffic-aware road cost calculator.
