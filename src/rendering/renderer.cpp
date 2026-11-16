@@ -8,6 +8,7 @@
 #include "syntraq/rendering/renderer.hpp"
 #include "syntraq/signals/rl_controller.hpp"
 #include "syntraq/signals/coordinated_controller.hpp"
+#include "syntraq/vehicles/emergency_priority_manager.hpp"
 
 // Third-party headers — isolated to this .cpp
 #include "raylib.h"
@@ -224,7 +225,8 @@ SimControlAction Renderer::render_frame(
     float                                                              current_speed_scale,
     const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
     SignalControllerType                                               controller_type,
-    RoutingStrategyType                                                active_routing) {
+    RoutingStrategyType                                                active_routing,
+    const EmergencyCorridorStatus*                                     emergency_status) {
     update_camera(network);
 
     begin_frame();
@@ -241,7 +243,7 @@ SimControlAction Renderer::render_frame(
 
     // ── Screen Space HUD & UI Overlays ─────────────────────────────────────
     draw_status_bar(state, current_speed_scale);
-    SimControlAction action = draw_imgui(state, network, current_speed_scale, signal_controllers, controller_type, active_routing);
+    SimControlAction action = draw_imgui(state, network, current_speed_scale, signal_controllers, controller_type, active_routing, emergency_status);
 
     end_frame();
 
@@ -659,8 +661,18 @@ void Renderer::draw_vehicles(const RoadNetwork&          network,
 
         const float angle_deg = std::atan2(udy, udx) * (180.0f / 3.1415926535f);
 
-        const Color car_col = pal::vehicle_colors[
-            static_cast<uint32_t>(v.id) % pal::kNumVehicleColors];
+        const bool is_emergency = v.is_emergency();
+
+        // Emergency siren pulsing halo
+        if (is_emergency) {
+            const float t_siren = static_cast<float>(GetTime());
+            const float halo_radius = 16.0f + 4.0f * std::sin(t_siren * 12.0f);
+            DrawCircleV(pos, halo_radius, { 255, 30, 30, 50 });
+        }
+
+        const Color car_col = is_emergency
+                            ? Color{ 245, 248, 255, 255 }
+                            : pal::vehicle_colors[static_cast<uint32_t>(v.id) % pal::kNumVehicleColors];
 
         // 1. Drop shadow / dark outline
         const Rectangle shadow_rec{ pos.x, pos.y, kCarLength + 1.6f, kCarWidth + 1.6f };
@@ -676,6 +688,15 @@ void Renderer::draw_vehicles(const RoadNetwork&          network,
                          angle_deg,
                          car_col);
 
+        // Emergency reflective high-visibility side chevrons
+        if (is_emergency) {
+            const Rectangle stripe_rec{ pos.x, pos.y, kCarLength * 0.7f, 1.6f };
+            DrawRectanglePro(stripe_rec,
+                             { (kCarLength * 0.7f) * 0.5f, 0.8f },
+                             angle_deg,
+                             { 230, 30, 30, 240 });
+        }
+
         // 3. Cabin / Roof (dark tinted glass, slightly set back from center)
         const float cabin_len = kCarLength * 0.46f;
         const float cabin_wid = kCarWidth * 0.72f;
@@ -685,6 +706,16 @@ void Renderer::draw_vehicles(const RoadNetwork&          network,
                          { cabin_len * 0.5f, cabin_wid * 0.5f },
                          angle_deg,
                          { 18, 22, 32, 230 });
+
+        // Emergency rooftop strobe bar (alternating flashing red and blue strobes)
+        if (is_emergency) {
+            const float t_strobe = static_cast<float>(GetTime());
+            const bool strobe_red = (std::fmod(t_strobe * 8.0f, 2.0f) < 1.0f);
+            const Color left_light = strobe_red ? Color{ 255, 30, 30, 255 } : Color{ 60, 10, 10, 180 };
+            const Color right_light = !strobe_red ? Color{ 30, 140, 255, 255 } : Color{ 10, 30, 80, 180 };
+            DrawCircleV({ cabin_pos.x - perp_x * 2.2f, cabin_pos.y - perp_y * 2.2f }, 1.8f, left_light);
+            DrawCircleV({ cabin_pos.x + perp_x * 2.2f, cabin_pos.y + perp_y * 2.2f }, 1.8f, right_light);
+        }
 
         // 4. Windshield subtle glint (front edge of cabin)
         const Vector2 glint_pos{ cabin_pos.x + udx * (cabin_len * 0.38f),
@@ -1163,25 +1194,26 @@ void Renderer::draw_traffic_information(
     ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.00f), "TRAFFIC SCENARIO PRESETS");
     ImGui::Separator();
 
-    const char* scenario_names[] = { "Low Traffic", "Medium Traffic", "High Traffic", "Rush Hour" };
+    const char* scenario_names[] = { "Low Traffic", "Medium Traffic", "High Traffic", "Rush Hour", "Emergency Priority" };
     const TrafficScenario scenarios[] = {
         TrafficScenario::Low,
         TrafficScenario::Medium,
         TrafficScenario::High,
-        TrafficScenario::RushHour
+        TrafficScenario::RushHour,
+        TrafficScenario::EmergencyPriority
     };
-    const char* scenario_labels[] = { "Low", "Med", "High", "Rush" };
+    const char* scenario_labels[] = { "Low", "Med", "High", "Rush", "Emerg" };
 
     const float avail_w = ImGui::GetContentRegionAvail().x;
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    const float btn_w   = (avail_w - 3.0f * spacing) / 4.0f;
+    const float btn_w   = (avail_w - 4.0f * spacing) / 5.0f;
 
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 5; ++i) {
         if (i > 0) ImGui::SameLine();
         const bool is_active = (state.scenario == scenarios[i]);
         if (is_active) {
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.60f, 0.80f, 1.00f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.25f, 0.70f, 0.90f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.25f, 0.25f, 1.00f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.35f, 0.35f, 1.00f));
         }
 
         if (ImGui::Button(scenario_labels[i], ImVec2(btn_w, 24.0f))) {
@@ -1267,6 +1299,7 @@ void Renderer::draw_traffic_panel(
     const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
     SignalControllerType                                               controller_type,
     RoutingStrategyType                                                active_routing,
+    const EmergencyCorridorStatus*                                     emergency_status,
     SimControlAction&                                                  action) {
     const float screen_w = static_cast<float>(GetScreenWidth());
     const float screen_h = static_cast<float>(GetScreenHeight());
@@ -1298,6 +1331,11 @@ void Renderer::draw_traffic_panel(
         draw_traffic_information(state, network, action);
 
         ImGui::Spacing();
+        if (ImGui::CollapsingHeader("EMERGENCY PRIORITY CORRIDOR", ImGuiTreeNodeFlags_DefaultOpen)) {
+            draw_emergency_priority_panel(emergency_status, action);
+        }
+
+        ImGui::Spacing();
         if (ImGui::CollapsingHeader("ROUTING ENGINE", ImGuiTreeNodeFlags_DefaultOpen)) {
             draw_routing_strategy(active_routing, action);
         }
@@ -1308,6 +1346,60 @@ void Renderer::draw_traffic_panel(
         }
     }
     ImGui::End();
+}
+
+void Renderer::draw_emergency_priority_panel(
+    const EmergencyCorridorStatus* emergency_status,
+    SimControlAction&              action) {
+    ImGui::TextColored(ImVec4(1.00f, 0.40f, 0.40f, 1.00f), "EMERGENCY VEHICLE DISPATCH");
+    ImGui::Separator();
+
+    const float avail_w = ImGui::GetContentRegionAvail().x;
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.20f, 0.20f, 1.00f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.30f, 0.30f, 1.00f));
+    if (ImGui::Button("DISPATCH EMERGENCY VEHICLE", ImVec2(avail_w, 28.0f))) {
+        action.request_trigger_emergency = true;
+    }
+    ImGui::PopStyleColor(2);
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Deploy emergency vehicle with priority signal preemption");
+    }
+
+    if (emergency_status) {
+        if (emergency_status->active) {
+            ImGui::TextColored(ImVec4(1.00f, 0.85f, 0.20f, 1.00f),
+                               "Active Response: %u vehicle(s)",
+                               emergency_status->active_emergency_count);
+            ImGui::TextColored(ImVec4(0.40f, 0.90f, 0.50f, 1.00f),
+                               "Priority Corridor: %zu road(s), %zu signal(s)",
+                               emergency_status->corridor_roads.size(),
+                               emergency_status->preempted_intersections.size());
+        } else {
+            ImGui::TextColored(ImVec4(0.60f, 0.60f, 0.60f, 1.00f), "Corridor: Standby (Normal Traffic)");
+        }
+
+        if (emergency_status->completed_trips > 0) {
+            if (ImGui::BeginTable("EmergStatsTable", 2, ImGuiTableFlags_SizingFixedFit)) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::Text("Completed Trips");
+                ImGui::TableSetColumnIndex(1); ImGui::Text("%u", emergency_status->completed_trips);
+
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::Text("Avg Travel Time");
+                ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f s", emergency_status->avg_travel_time_s);
+
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::Text("Avg Signal Delay");
+                ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f s", emergency_status->avg_wait_time_s);
+
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::Text("Avg Speed");
+                ImGui::TableSetColumnIndex(1); ImGui::Text("%.1f km/h", emergency_status->avg_speed_mps * 3.6f);
+
+                ImGui::EndTable();
+            }
+        }
+    }
 }
 
 void Renderer::draw_routing_strategy(
@@ -1357,11 +1449,12 @@ SimControlAction Renderer::draw_imgui(
     float                                                              current_speed_scale,
     const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
     SignalControllerType                                               controller_type,
-    RoutingStrategyType                                                active_routing) {
+    RoutingStrategyType                                                active_routing,
+    const EmergencyCorridorStatus*                                     emergency_status) {
     SimControlAction action;
 
     draw_simulation_panel(state, network, current_speed_scale, action);
-    draw_traffic_panel(state, network, signal_controllers, controller_type, active_routing, action);
+    draw_traffic_panel(state, network, signal_controllers, controller_type, active_routing, emergency_status, action);
 
     return action;
 }
