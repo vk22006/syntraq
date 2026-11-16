@@ -40,7 +40,13 @@ struct SimControlAction {
     std::optional<TrafficScenario>      request_scenario    {};
     std::optional<SignalControllerType> request_controller_type {};
     std::optional<RoutingStrategyType>  request_routing_strategy{};
+    bool                                request_trigger_emergency{ false };
+    std::optional<bool>                 request_emergency_priority_toggle{};
+    std::optional<bool>                 request_emergency_rerouting_toggle{};
 };
+
+/// Forward declaration for emergency corridor telemetry
+struct EmergencyCorridorStatus;
 
 /// Forward declaration for internal camera storage (avoids raylib.h in header).
 struct RenderCamera;
@@ -72,7 +78,8 @@ public:
         float                                                              current_speed_scale = 1.0f,
         const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers = nullptr,
         SignalControllerType                                               controller_type = SignalControllerType::FixedTime,
-        RoutingStrategyType                                                active_routing = RoutingStrategyType::Static);
+        RoutingStrategyType                                                active_routing = RoutingStrategyType::Static,
+        const EmergencyCorridorStatus*                                     emergency_status = nullptr);
 
     /// Reset camera view to center and frame the road network with comfortable margins.
     void reset_camera(const RoadNetwork& network);
@@ -99,7 +106,8 @@ private:
         float                                                              current_speed_scale,
         const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
         SignalControllerType                                               controller_type,
-        RoutingStrategyType                                                active_routing);
+        RoutingStrategyType                                                active_routing,
+        const EmergencyCorridorStatus*                                     emergency_status);
 
     // ── Focused UI Panel Functions ─────────────────────────────────────────
     void draw_simulation_panel(
@@ -121,6 +129,7 @@ private:
         const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
         SignalControllerType                                               controller_type,
         RoutingStrategyType                                                active_routing,
+        const EmergencyCorridorStatus*                                     emergency_status,
         SimControlAction&                                                  action);
     void draw_signal_status(
         const std::unordered_map<IntersectionId, TrafficSignalController>* signal_controllers,
@@ -128,6 +137,9 @@ private:
         SimControlAction&                                                  action);
     void draw_routing_strategy(
         RoutingStrategyType                                                active_routing,
+        SimControlAction&                                                  action);
+    void draw_emergency_priority_panel(
+        const EmergencyCorridorStatus*                                     emergency_status,
         SimControlAction&                                                  action);
     void draw_traffic_information(
         const SimState&    state,
