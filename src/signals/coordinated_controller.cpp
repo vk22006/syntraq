@@ -66,6 +66,8 @@ void CoordinatedController::reset() {
     last_decision_          = CoordinatedDecision::Hold;
     last_reason_            = "Controller reset to Phase 0 Green";
     neighbor_states_.clear();
+    is_preempted_           = false;
+    preemption_road_        = kInvalidRoadId;
 
     local_state_.active_phase_index = 0;
     local_state_.stage              = PhaseStage::Green;
@@ -105,6 +107,17 @@ void CoordinatedController::receive_neighbor_states(const std::vector<NeighborIn
 
 void CoordinatedController::clear_neighbor_states() noexcept {
     neighbor_states_.clear();
+}
+
+void CoordinatedController::request_emergency_preemption(RoadId road_id) {
+    is_preempted_ = true;
+    preemption_road_ = road_id;
+}
+
+void CoordinatedController::clear_emergency_preemption() {
+    is_preempted_ = false;
+    preemption_road_ = kInvalidRoadId;
+    stage_elapsed_s_ = 0.0f;
 }
 
 void CoordinatedController::refresh_local_state(
@@ -155,6 +168,64 @@ void CoordinatedController::tick(float dt) {
     local_state_.stage_elapsed_s = stage_elapsed_s_;
     local_state_.stage_remaining_s = stage_remaining_s();
 
+    // ── Emergency Preemption Priority Handling ─────────────────────────────
+    if (is_preempted_ && preemption_road_ != kInvalidRoadId) {
+        size_t target_phase_idx = current_phase_idx_;
+        bool found = false;
+        for (size_t i = 0; i < phases_.size(); ++i) {
+            const auto& p = phases_[i];
+            if (std::find(p.green_roads.begin(), p.green_roads.end(), preemption_road_) != p.green_roads.end()) {
+                target_phase_idx = i;
+                found = true;
+                break;
+            }
+        }
+
+        if (found) {
+            if (current_phase_idx_ == target_phase_idx) {
+                if (current_stage_ == PhaseStage::Green) {
+                    last_decision_ = CoordinatedDecision::EmergencyPriority;
+                    last_reason_   = "Holding green corridor for approaching emergency vehicle";
+                    apply_stage_lights();
+                    return;
+                } else if (current_stage_ == PhaseStage::Yellow) {
+                    if (stage_elapsed_s_ >= current_stage_duration_) {
+                        transition_to_stage(PhaseStage::AllRed);
+                        return;
+                    }
+                } else if (current_stage_ == PhaseStage::AllRed) {
+                    if (stage_elapsed_s_ >= current_stage_duration_) {
+                        current_phase_idx_ = target_phase_idx;
+                        transition_to_stage(PhaseStage::Green);
+                        return;
+                    }
+                }
+            } else {
+                // Conflicting phase: clear traffic safely
+                if (current_stage_ == PhaseStage::Green) {
+                    constexpr float kMinSafetyGreen = 2.0f;
+                    if (stage_elapsed_s_ >= kMinSafetyGreen) {
+                        last_decision_ = CoordinatedDecision::EmergencyPriority;
+                        last_reason_   = "Emergency preemption: safely clearing conflicting phase";
+                        transition_to_stage(PhaseStage::Yellow);
+                        return;
+                    }
+                } else if (current_stage_ == PhaseStage::Yellow) {
+                    if (stage_elapsed_s_ >= current_stage_duration_) {
+                        transition_to_stage(PhaseStage::AllRed);
+                        return;
+                    }
+                } else if (current_stage_ == PhaseStage::AllRed) {
+                    if (stage_elapsed_s_ >= current_stage_duration_) {
+                        current_phase_idx_ = target_phase_idx;
+                        transition_to_stage(PhaseStage::Green);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     if (current_stage_ == PhaseStage::Green) {
         const auto decision = evaluate_coordination_decision();
         if (decision == CoordinatedDecision::MitigateSpillback ||
@@ -189,6 +260,13 @@ void CoordinatedController::tick(float dt) {
 }
 
 CoordinatedDecision CoordinatedController::evaluate_coordination_decision() {
+    // 0. Emergency Preemption Override
+    if (is_preempted_) {
+        last_decision_ = CoordinatedDecision::EmergencyPriority;
+        last_reason_   = "Emergency priority corridor active";
+        return CoordinatedDecision::EmergencyPriority;
+    }
+
     // 1. Mandatory Minimum Green Safety
     if (stage_elapsed_s_ < config_.min_green_s) {
         last_decision_ = CoordinatedDecision::Hold;
