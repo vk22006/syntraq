@@ -131,6 +131,19 @@ public:
                                    float  yellow_s,
                                    float  all_red_s) = 0;
 
+    // ── Emergency Signal Preemption ────────────────────────────────────────
+    /// Request emergency preemption right-of-way for an incoming road.
+    virtual void request_emergency_preemption(RoadId road_id) { (void)road_id; }
+
+    /// Clear emergency preemption override, allowing controller to resume normal cycles.
+    virtual void clear_emergency_preemption() {}
+
+    /// True if an emergency preemption override is currently active.
+    [[nodiscard]] virtual bool has_emergency_preemption() const noexcept { return false; }
+
+    /// Incoming road receiving emergency preemption right-of-way, or kInvalidRoadId if none.
+    [[nodiscard]] virtual RoadId emergency_preemption_road() const noexcept { return kInvalidRoadId; }
+
     // ── Validation & Cloning ───────────────────────────────────────────────
 
     [[nodiscard]] virtual bool is_valid() const noexcept = 0;
