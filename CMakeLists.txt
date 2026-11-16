@@ -186,6 +186,7 @@ add_library(syntraq_core STATIC
     src/vehicles/vehicle_movement_system.cpp
     src/vehicles/vehicle_spawner.cpp
     src/vehicles/route_provider.cpp
+    src/vehicles/emergency_priority_manager.cpp
     src/signals/traffic_light.cpp
     src/signals/fixed_time_controller.cpp
     src/signals/adaptive_controller.cpp
@@ -318,6 +319,16 @@ target_compile_options(syntraq_compare_routing PRIVATE
 add_executable(syntraq_compare_network_coordination experiments/compare_network_coordination.cpp)
 target_link_libraries(syntraq_compare_network_coordination PRIVATE syntraq_core)
 target_compile_options(syntraq_compare_network_coordination PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
+# ---------------------------------------------------------------------------
+# Emergency Priority Comparison Experiment
+# ---------------------------------------------------------------------------
+add_executable(syntraq_compare_emergency_priority experiments/compare_emergency_priority.cpp)
+target_link_libraries(syntraq_compare_emergency_priority PRIVATE syntraq_core)
+target_compile_options(syntraq_compare_emergency_priority PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
