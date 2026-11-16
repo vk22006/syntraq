@@ -158,6 +158,28 @@ void TrafficSignalController::set_phase_timings(size_t phase_idx,
     }
 }
 
+// ── Emergency Signal Preemption ──────────────────────────────────────────────
+
+void TrafficSignalController::request_emergency_preemption(RoadId road_id) {
+    if (impl_) {
+        impl_->request_emergency_preemption(road_id);
+    }
+}
+
+void TrafficSignalController::clear_emergency_preemption() {
+    if (impl_) {
+        impl_->clear_emergency_preemption();
+    }
+}
+
+bool TrafficSignalController::has_emergency_preemption() const noexcept {
+    return impl_ ? impl_->has_emergency_preemption() : false;
+}
+
+RoadId TrafficSignalController::emergency_preemption_road() const noexcept {
+    return impl_ ? impl_->emergency_preemption_road() : kInvalidRoadId;
+}
+
 // ── Factory Helpers ──────────────────────────────────────────────────────────
 
 TrafficSignalController TrafficSignalController::make_fixed_time(
