@@ -26,6 +26,7 @@
 
 namespace syntraq {
 
+class RLController;
 class RLPolicyInference;
 class TrafficAwareRouting;
 
@@ -179,9 +180,18 @@ public:
     [[nodiscard]] const std::vector<Vehicle>& vehicles() const noexcept { return vehicles_; }
 
 private:
+    struct RoadTickStats {
+        uint32_t total_count{ 0 };
+        uint32_t queued_count{ 0 };
+        float    speed_sum{ 0.0f };
+        float    wait_sum{ 0.0f };
+    };
+
     void despawn_arrived();
     void init_default_signals();
     void init_default_routing();
+    void populate_road_tick_stats();
+    void fill_rl_observation_from_stats(const TrafficSignalController& ctrl, float* out_obs) const noexcept;
 
     Config                cfg_;
     TrafficScenarioConfig scenario_cfg_;
@@ -206,6 +216,16 @@ private:
     EmergencyPriorityManager            emergency_manager_{};
     float                               real_time_window_{ 0.0f };
     uint32_t                     ticks_in_window_{ 0 };
+
+    // Reusable per-tick scratch buffers (zero heap allocations in steady state)
+    std::unordered_map<RoadId, uint32_t> road_queues_{};
+    std::unordered_map<RoadId, float>    road_max_waits_{};
+    std::vector<RoadTickStats>           road_tick_stats_{};
+    std::vector<uint32_t>                road_tick_epochs_{};
+    uint32_t                             road_tick_epoch_{ 0 };
+    std::vector<RLController*>           rl_due_shared_{};
+    std::vector<float>                   rl_batch_obs_buffer_{};
+    std::vector<RLController*>           rl_due_individual_{};
 };
 
 } // namespace syntraq
