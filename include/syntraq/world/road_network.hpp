@@ -98,6 +98,26 @@ public:
         return static_cast<uint32_t>(roads_.size());
     }
 
+    /// Dense list of all intersection IDs for O(1) indexed access / sampling.
+    [[nodiscard]] const std::vector<IntersectionId>& intersection_ids() const noexcept {
+        return intersection_ids_;
+    }
+
+    /// Upper bound (exclusive) on assigned IntersectionId values (dense index space).
+    [[nodiscard]] uint32_t max_intersection_id() const noexcept {
+        return next_intersection_id_;
+    }
+
+    /// Upper bound (exclusive) on assigned RoadId values (dense index space).
+    [[nodiscard]] uint32_t max_road_id() const noexcept {
+        return next_road_id_;
+    }
+
+    /// Monotonic version counter incremented on any topology mutation (for route caching).
+    [[nodiscard]] uint64_t topology_version() const noexcept {
+        return topology_version_;
+    }
+
     /// Remove all intersections and roads.
     void clear();
 
@@ -105,8 +125,14 @@ private:
     std::unordered_map<IntersectionId, Intersection> intersections_;
     std::unordered_map<RoadId,         Road>         roads_;
 
+    // O(1) dense lookup caches (safe because std::unordered_map guarantees node pointer stability)
+    std::vector<Intersection*>  inter_by_id_;
+    std::vector<Road*>          road_by_id_;
+    std::vector<IntersectionId> intersection_ids_;
+
     uint32_t next_intersection_id_{ 0 };
     uint32_t next_road_id_        { 0 };
+    uint64_t topology_version_    { 1 };
 };
 
 // ── Test-map factory ──────────────────────────────────────────────────────────
