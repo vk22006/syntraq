@@ -81,8 +81,13 @@ public:
     }
 
 private:
-    EmergencyCorridorStatus            status_{};
-    std::unordered_set<IntersectionId> previously_preempted_{};
+    EmergencyCorridorStatus                    status_{};
+    std::unordered_set<IntersectionId>         previously_preempted_{};
+
+    // Reusable per-tick scratch buffers (zero heap allocations on hot path)
+    std::vector<size_t>                        emergency_indices_{};
+    std::unordered_set<RoadId>                 current_corridors_{};
+    std::unordered_map<IntersectionId, RoadId> preemption_requests_{};
 };
 
 } // namespace syntraq
