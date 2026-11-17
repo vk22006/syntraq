@@ -195,9 +195,9 @@ private:
     float      stage_elapsed_s_  { 0.0f };
     RoadId     emergency_preemption_road_{ kInvalidRoadId };
 
-    // Dynamic queue observations
-    std::unordered_map<RoadId, uint32_t> observed_queues_;
-    std::unordered_map<RoadId, float>    observed_wait_times_;
+    // Dynamic queue observations (local incoming roads only — zero full-network map copies)
+    std::vector<uint32_t> local_queues_;
+    std::vector<float>    local_wait_times_;
 
     // Telemetry & Explainability
     AdaptiveDecision last_decision_       { AdaptiveDecision::Hold };
