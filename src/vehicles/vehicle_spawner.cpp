@@ -59,31 +59,35 @@ std::optional<Vehicle> VehicleSpawner::try_spawn(const RoadNetwork&          net
     const Road* first_road = network.road(route[0]);
     if (!first_road || first_road->lane_count() == 0) return std::nullopt;
 
-    // ── Lane Occupancy Check at Spawn Point ──────────────────────────────────
-    // Determine which lane on first_road is free within the spawn buffer
+    // ── Lane Occupancy Check at Spawn Point (single-pass bitmask, zero heap allocation) ──
     constexpr float kSpawnClearanceBufferM = 10.0f; // 4.5m car + 2.5m gap + margin
-    std::vector<uint32_t> available_lanes;
-    for (uint32_t l = 0; l < first_road->lane_count(); ++l) {
-        bool lane_occupied = false;
-        for (const auto& v : existing_vehicles) {
-            if (v.state == VehicleState::Arrived) continue;
-            if (v.current_road == route[0] && v.lane_index == l && v.progress_m < kSpawnClearanceBufferM) {
-                lane_occupied = true;
-                break;
-            }
-        }
-        if (!lane_occupied) {
-            available_lanes.push_back(l);
+    const uint32_t lane_count = first_road->lane_count();
+    uint64_t occupied_mask = 0;
+    const RoadId entry_road = route[0];
+
+    for (const auto& v : existing_vehicles) {
+        if (v.state == VehicleState::Arrived) continue;
+        if (v.current_road == entry_road && v.progress_m < kSpawnClearanceBufferM && v.lane_index < 64) {
+            occupied_mask |= (uint64_t{ 1 } << v.lane_index);
         }
     }
 
-    if (available_lanes.empty()) {
+    uint32_t available_lanes[64];
+    size_t   available_count = 0;
+    const uint32_t capped_lanes = std::min(lane_count, 64u);
+    for (uint32_t l = 0; l < capped_lanes; ++l) {
+        if ((occupied_mask & (uint64_t{ 1 } << l)) == 0) {
+            available_lanes[available_count++] = l;
+        }
+    }
+
+    if (available_count == 0) {
         // All entry lanes currently occupied; defer spawn to avoid overlap
         return std::nullopt;
     }
 
     // Pick random available lane
-    std::uniform_int_distribution<size_t> lane_pick(0, available_lanes.size() - 1);
+    std::uniform_int_distribution<size_t> lane_pick(0, available_count - 1);
     const uint32_t chosen_lane = available_lanes[lane_pick(rng_)];
 
     // Build vehicle
@@ -196,13 +200,11 @@ IntersectionId VehicleSpawner::pick_destination(const RoadNetwork& network) {
 }
 
 IntersectionId VehicleSpawner::random_intersection(const RoadNetwork& network) {
-    const auto& intersections = network.intersections();
-    if (intersections.empty()) return kInvalidIntersectionId;
+    const auto& ids = network.intersection_ids();
+    if (ids.empty()) return kInvalidIntersectionId;
 
-    std::uniform_int_distribution<size_t> dist(0, intersections.size() - 1);
-    auto it = intersections.begin();
-    std::advance(it, dist(rng_));
-    return it->first;
+    std::uniform_int_distribution<size_t> dist(0, ids.size() - 1);
+    return ids[dist(rng_)];
 }
 
 } // namespace syntraq
