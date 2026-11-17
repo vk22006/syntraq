@@ -21,8 +21,11 @@ struct OrtSessionImpl {
     Ort::SessionOptions session_options{};
     std::unique_ptr<Ort::Session> session{};
     Ort::MemoryInfo memory_info{ Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault) };
+    Ort::RunOptions run_options{ nullptr };
     std::string input_name{ "input" };
     std::string output_name{ "output" };
+    std::vector<float> flat_batch_buffer{};
+    std::vector<float> flat_output_buffer{};
 };
 
 TrafficPredictor::TrafficPredictor()
@@ -116,7 +119,7 @@ float TrafficPredictor::predict(const std::vector<float>& preprocessed_features)
         const char* output_names[] = { impl_->output_name.c_str() };
 
         auto output_tensors = impl_->session->Run(
-            Ort::RunOptions{ nullptr },
+            impl_->run_options,
             input_names,
             &input_tensor,
             1,
@@ -167,8 +170,9 @@ std::vector<float> TrafficPredictor::predictBatch(
     const std::size_t batch_size = batch_features.size();
     predictions.reserve(batch_size);
 
-    // Flatten into contiguous buffer
-    std::vector<float> flat_buffer;
+    // Flatten into reusable contiguous buffer (zero heap allocation after warmup)
+    auto& flat_buffer = impl_->flat_batch_buffer;
+    flat_buffer.clear();
     flat_buffer.reserve(batch_size * TrafficFeatureScaler::TOTAL_FEATURES);
     for (const auto& row : batch_features) {
         if (row.size() != TrafficFeatureScaler::TOTAL_FEATURES) {
@@ -199,7 +203,7 @@ std::vector<float> TrafficPredictor::predictBatch(
         const char* output_names[] = { impl_->output_name.c_str() };
 
         auto output_tensors = impl_->session->Run(
-            Ort::RunOptions{ nullptr },
+            impl_->run_options,
             input_names,
             &input_tensor,
             1,
