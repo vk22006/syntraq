@@ -27,8 +27,9 @@ struct EuclideanDistanceHeuristic {
         const auto* u = network.intersection(current);
         const auto* v = network.intersection(target);
         if (!u || !v) return 0.0f;
-        return std::hypot(v->position.x - u->position.x,
-                          v->position.y - u->position.y);
+        const float dx = v->position.x - u->position.x;
+        const float dy = v->position.y - u->position.y;
+        return std::sqrt(dx * dx + dy * dy);
     }
 };
 
