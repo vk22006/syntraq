@@ -174,6 +174,12 @@ private:
 
     MetricSnapshot              current_snapshot_{};
     std::vector<MetricSnapshot> timeseries_{};
+
+    // Reusable flat epoch-stamped lane queue counters (zero per-tick heap allocations)
+    std::vector<uint32_t>       lane_queue_counts_{};
+    std::vector<uint32_t>       lane_queue_epochs_{};
+    uint32_t                    lane_queue_epoch_{ 0 };
+    uint32_t                    lane_queue_stride_{ 4 };
 };
 
 } // namespace syntraq
