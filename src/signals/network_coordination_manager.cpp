@@ -15,14 +15,22 @@ void NetworkCoordinationManager::build_topology(
 {
     links_.clear();
 
-    for (const auto& [to_id, _] : controllers) {
-        const auto incoming = network.incoming_roads(to_id);
-        for (RoadId r_id : incoming) {
+    for (const auto& [to_id, to_ctrl] : controllers) {
+        const bool to_is_coord = (to_ctrl.as<CoordinatedController>() != nullptr);
+        const auto* to_inter = network.intersection(to_id);
+        if (!to_inter) continue;
+
+        for (RoadId r_id : to_inter->incoming_roads) {
             const Road* r = network.road(r_id);
             if (!r) continue;
 
             const IntersectionId from_id = r->from;
-            if (controllers.find(from_id) != controllers.end()) {
+            const auto from_it = controllers.find(from_id);
+            if (from_it != controllers.end()) {
+                const bool from_is_coord = (from_it->second.as<CoordinatedController>() != nullptr);
+                // Only register links if at least one endpoint is a CoordinatedController
+                if (!to_is_coord && !from_is_coord) continue;
+
                 CoordinatedLink link;
                 link.from_intersection = from_id;
                 link.to_intersection   = to_id;
