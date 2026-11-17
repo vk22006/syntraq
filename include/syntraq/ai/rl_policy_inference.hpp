@@ -47,9 +47,15 @@ public:
     /// Predict optimal action decision and Q-values from a 12-dimensional observation.
     [[nodiscard]] RLActionDecision predict(const std::vector<float>& observation);
 
-    /// Batch evaluation of multiple observation vectors.
+    /// Batch evaluation of multiple observation vectors (single batched ONNX tensor pass).
     [[nodiscard]] std::vector<RLActionDecision> predictBatch(
         const std::vector<std::vector<float>>& batch_observations
+    );
+
+    /// Zero-copy flat-buffer batch evaluation (`batch_size * OBSERVATION_DIM` floats).
+    [[nodiscard]] std::vector<RLActionDecision> predictBatchFlat(
+        const float* flat_observations,
+        size_t       batch_size
     );
 
     /// Query whether model is loaded and ready for execution.
