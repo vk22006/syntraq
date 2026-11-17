@@ -21,8 +21,11 @@ struct OrtPolicySessionImpl {
     Ort::SessionOptions session_options{};
     std::unique_ptr<Ort::Session> session{};
     Ort::MemoryInfo memory_info{ Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault) };
+    Ort::RunOptions run_options{ nullptr };
     std::string input_name{ "observation" };
     std::string output_name{ "q_values" };
+    std::vector<float> flat_input_buffer{};
+    std::vector<float> flat_output_buffer{};
 };
 
 RLPolicyInference::RLPolicyInference()
@@ -102,6 +105,9 @@ RLActionDecision RLPolicyInference::predict(const std::vector<float>& observatio
 
     try {
         std::array<int64_t, 2> input_shape{ 1, static_cast<int64_t>(OBSERVATION_DIM) };
+        std::array<int64_t, 2> output_shape{ 1, static_cast<int64_t>(ACTION_DIM) };
+        std::array<float, ACTION_DIM> output_buf{ 0.0f, 0.0f };
+
         Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
             impl_->memory_info,
             const_cast<float*>(observation.data()),
@@ -109,27 +115,29 @@ RLActionDecision RLPolicyInference::predict(const std::vector<float>& observatio
             input_shape.data(),
             input_shape.size()
         );
+        Ort::Value output_tensor = Ort::Value::CreateTensor<float>(
+            impl_->memory_info,
+            output_buf.data(),
+            output_buf.size(),
+            output_shape.data(),
+            output_shape.size()
+        );
 
         const char* input_names[] = { impl_->input_name.c_str() };
         const char* output_names[] = { impl_->output_name.c_str() };
 
-        auto output_tensors = impl_->session->Run(
-            Ort::RunOptions{ nullptr },
+        impl_->session->Run(
+            impl_->run_options,
             input_names,
             &input_tensor,
             1,
             output_names,
+            &output_tensor,
             1
         );
 
-        if (output_tensors.empty() || !output_tensors.front().IsTensor()) {
-            last_error_ = "Model evaluation produced invalid or empty output tensor.";
-            return RLActionDecision{ 0, 0.0f, 0.0f, 0.0f };
-        }
-
-        const float* q_values = output_tensors.front().GetTensorData<float>();
-        const float q0 = q_values[0];
-        const float q1 = q_values[1];
+        const float q0 = output_buf[0];
+        const float q1 = output_buf[1];
         const int best_action = (q1 > q0) ? 1 : 0;
 
         const auto t_end = std::chrono::high_resolution_clock::now();
@@ -152,15 +160,124 @@ RLActionDecision RLPolicyInference::predict(const std::vector<float>& observatio
     }
 }
 
+std::vector<RLActionDecision> RLPolicyInference::predictBatchFlat(
+    const float* flat_observations,
+    size_t       batch_size
+) {
+    std::vector<RLActionDecision> decisions;
+    if (batch_size == 0 || !flat_observations) return decisions;
+
+    if (!isLoaded()) {
+        last_error_ = "predictBatchFlat() called on uninitialized or unloaded model.";
+        decisions.resize(batch_size, RLActionDecision{ 0, 0.0f, 0.0f, 0.0f });
+        return decisions;
+    }
+
+    const auto t_start = std::chrono::high_resolution_clock::now();
+
+    try {
+        impl_->flat_output_buffer.resize(batch_size * ACTION_DIM);
+        std::array<int64_t, 2> input_shape{
+            static_cast<int64_t>(batch_size),
+            static_cast<int64_t>(OBSERVATION_DIM)
+        };
+        std::array<int64_t, 2> output_shape{
+            static_cast<int64_t>(batch_size),
+            static_cast<int64_t>(ACTION_DIM)
+        };
+
+        Ort::Value input_tensor = Ort::Value::CreateTensor<float>(
+            impl_->memory_info,
+            const_cast<float*>(flat_observations),
+            batch_size * OBSERVATION_DIM,
+            input_shape.data(),
+            input_shape.size()
+        );
+        Ort::Value output_tensor = Ort::Value::CreateTensor<float>(
+            impl_->memory_info,
+            impl_->flat_output_buffer.data(),
+            impl_->flat_output_buffer.size(),
+            output_shape.data(),
+            output_shape.size()
+        );
+
+        const char* input_names[] = { impl_->input_name.c_str() };
+        const char* output_names[] = { impl_->output_name.c_str() };
+
+        impl_->session->Run(
+            impl_->run_options,
+            input_names,
+            &input_tensor,
+            1,
+            output_names,
+            &output_tensor,
+            1
+        );
+
+        const auto t_end = std::chrono::high_resolution_clock::now();
+        const float total_us = static_cast<float>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(t_end - t_start).count()
+        ) / 1000.0f;
+        const float per_item_us = total_us / static_cast<float>(batch_size);
+
+        decisions.reserve(batch_size);
+        const float* out_ptr = impl_->flat_output_buffer.data();
+        for (size_t i = 0; i < batch_size; ++i) {
+            const float q0 = out_ptr[i * ACTION_DIM + 0];
+            const float q1 = out_ptr[i * ACTION_DIM + 1];
+            const int best_action = (q1 > q0) ? 1 : 0;
+            decisions.push_back(RLActionDecision{ best_action, q0, q1, per_item_us });
+        }
+
+        last_latency_us_ = per_item_us;
+        total_latency_us_ += total_us;
+        inference_count_ += batch_size;
+        last_error_.clear();
+        return decisions;
+    } catch (const Ort::Exception&) {
+        // Fallback for static-batch ONNX models: evaluate sequentially
+        decisions.clear();
+        decisions.reserve(batch_size);
+        std::vector<float> single_obs(OBSERVATION_DIM);
+        for (size_t i = 0; i < batch_size; ++i) {
+            std::copy_n(flat_observations + i * OBSERVATION_DIM, OBSERVATION_DIM, single_obs.data());
+            decisions.push_back(predict(single_obs));
+        }
+        return decisions;
+    }
+}
+
 std::vector<RLActionDecision> RLPolicyInference::predictBatch(
     const std::vector<std::vector<float>>& batch_observations
 ) {
-    std::vector<RLActionDecision> decisions;
-    decisions.reserve(batch_observations.size());
-    for (const auto& obs : batch_observations) {
-        decisions.push_back(predict(obs));
+    if (batch_observations.empty()) return {};
+    if (batch_observations.size() == 1) {
+        return { predict(batch_observations[0]) };
     }
-    return decisions;
+
+    if (!isLoaded()) {
+        last_error_ = "predictBatch() called on uninitialized or unloaded model.";
+        return std::vector<RLActionDecision>(batch_observations.size(), RLActionDecision{ 0, 0.0f, 0.0f, 0.0f });
+    }
+
+    const size_t batch_size = batch_observations.size();
+    impl_->flat_input_buffer.resize(batch_size * OBSERVATION_DIM);
+
+    for (size_t i = 0; i < batch_size; ++i) {
+        if (batch_observations[i].size() != OBSERVATION_DIM) {
+            // Fall back to element-wise validation for mixed/invalid dimensions
+            std::vector<RLActionDecision> decisions;
+            decisions.reserve(batch_size);
+            for (const auto& obs : batch_observations) {
+                decisions.push_back(predict(obs));
+            }
+            return decisions;
+        }
+        std::copy_n(batch_observations[i].data(), OBSERVATION_DIM,
+                    impl_->flat_input_buffer.data() + i * OBSERVATION_DIM);
+    }
+
+    return predictBatchFlat(impl_->flat_input_buffer.data(), batch_size);
 }
 
 std::string RLPolicyInference::getLastError() const {
