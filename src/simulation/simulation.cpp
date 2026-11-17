@@ -10,6 +10,7 @@
 #include "syntraq/world/road_network.hpp"
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <map>
 
@@ -39,6 +40,7 @@ Simulation::Simulation(Config cfg, std::function<RoadNetwork()> network_factory)
         spawner_.max_vehicles     = scenario_cfg_.max_vehicles;
     }
     state_.scenario = cfg_.scenario;
+    vehicles_.reserve(std::min<uint32_t>(spawner_.max_vehicles, 4096u));
     metrics_collector_.set_scenario(cfg_.scenario, scenario_cfg_.name);
     metrics_collector_.set_seed(cfg_.seed);
     data_collector_.set_run_metadata("run_001", cfg_.scenario, scenario_cfg_.name, cfg_.seed);
@@ -111,33 +113,92 @@ void Simulation::tick() {
     if (!state_.running) return;
 
     // ── 1. Ingest approach queues & wait times, then advance signal controllers ───
-    std::unordered_map<RoadId, uint32_t> road_queues;
-    std::unordered_map<RoadId, float>    road_max_waits;
-    for (const auto& v : vehicles_) {
-        if (v.state == VehicleState::Arrived) continue;
-        if (v.state == VehicleState::Stopped || v.speed_mps < 0.5f) {
-            road_queues[v.current_road]++;
-            if (v.wait_time_s > road_max_waits[v.current_road]) {
-                road_max_waits[v.current_road] = v.wait_time_s;
+    if (!signal_controllers_.empty()) {
+        road_queues_.clear();
+        road_max_waits_.clear();
+        for (const auto& v : vehicles_) {
+            if (v.state == VehicleState::Arrived) continue;
+            if (v.state == VehicleState::Stopped || v.speed_mps < 0.5f) {
+                road_queues_[v.current_road]++;
+                auto& max_w = road_max_waits_[v.current_road];
+                if (v.wait_time_s > max_w) {
+                    max_w = v.wait_time_s;
+                }
             }
         }
-    }
 
-    // ── Exchange network-level coordination information among neighboring signals ──
-    coordination_manager_.exchange_coordination_states(network_, signal_controllers_, road_queues, road_max_waits);
+        // ── Exchange network-level coordination information among neighboring signals ──
+        if (coordination_manager_.link_count() > 0) {
+            coordination_manager_.exchange_coordination_states(
+                network_, signal_controllers_, road_queues_, road_max_waits_);
+        }
 
-    for (auto& [id, controller] : signal_controllers_) {
-        controller.observe_traffic(road_queues, road_max_waits);
-        if (auto* rlc = controller.as<RLController>()) {
-            if (rlc->is_decision_due()) {
-                const auto obs = compute_rl_observation(id);
-                rlc->receive_observation(obs);
-                rlc->run_inference();
-                const int act = rlc->produce_action();
-                rlc->apply_action(act);
+        rl_due_shared_.clear();
+        rl_due_individual_.clear();
+
+        for (auto& [id, controller] : signal_controllers_) {
+            controller.observe_traffic(road_queues_, road_max_waits_);
+            if (auto* rlc = controller.as<RLController>()) {
+                if (rlc->is_decision_due()) {
+                    if (shared_rl_policy_ && shared_rl_policy_->isLoaded() &&
+                        rlc->policy().get() == shared_rl_policy_.get()) {
+                        rl_due_shared_.push_back(rlc);
+                    } else {
+                        rl_due_individual_.push_back(rlc);
+                    }
+                }
             }
         }
-        controller.tick(cfg_.dt_seconds);
+
+        // Fast O(N + Intersections*Incoming) observation extraction + batched ONNX RL inference
+        if (!rl_due_shared_.empty() || !rl_due_individual_.empty()) {
+            populate_road_tick_stats();
+
+            if (!rl_due_shared_.empty()) {
+                const size_t batch_n = rl_due_shared_.size();
+                rl_batch_obs_buffer_.resize(batch_n * RLController::OBSERVATION_DIM);
+                std::array<float, RLController::OBSERVATION_DIM> obs_arr{};
+
+                for (size_t i = 0; i < batch_n; ++i) {
+                    RLController* rlc = rl_due_shared_[i];
+                    const auto it = signal_controllers_.find(rlc->intersection_id());
+                    if (it != signal_controllers_.end()) {
+                        fill_rl_observation_from_stats(it->second, obs_arr.data());
+                    } else {
+                        obs_arr.fill(0.0f);
+                    }
+                    rlc->receive_observation(obs_arr);
+                    std::copy_n(obs_arr.data(), RLController::OBSERVATION_DIM,
+                                rl_batch_obs_buffer_.data() + i * RLController::OBSERVATION_DIM);
+                }
+
+                const auto decisions = shared_rl_policy_->predictBatchFlat(
+                    rl_batch_obs_buffer_.data(), batch_n);
+                for (size_t i = 0; i < batch_n && i < decisions.size(); ++i) {
+                    rl_due_shared_[i]->apply_batched_decision(decisions[i]);
+                }
+            }
+
+            if (!rl_due_individual_.empty()) {
+                std::array<float, RLController::OBSERVATION_DIM> obs_arr{};
+                for (RLController* rlc : rl_due_individual_) {
+                    const auto it = signal_controllers_.find(rlc->intersection_id());
+                    if (it != signal_controllers_.end()) {
+                        fill_rl_observation_from_stats(it->second, obs_arr.data());
+                    } else {
+                        obs_arr.fill(0.0f);
+                    }
+                    rlc->receive_observation(obs_arr);
+                    rlc->run_inference();
+                    const int act = rlc->produce_action();
+                    rlc->apply_action(act);
+                }
+            }
+        }
+
+        for (auto& [id, controller] : signal_controllers_) {
+            controller.tick(cfg_.dt_seconds);
+        }
     }
 
     // ── Update real-time conditions for traffic-aware routing ───────────
@@ -480,6 +541,111 @@ bool Simulation::trigger_emergency_vehicle(IntersectionId source, IntersectionId
         return true;
     }
     return false;
+}
+
+void Simulation::populate_road_tick_stats() {
+    const size_t max_roads = static_cast<size_t>(network_.max_road_id());
+    if (road_tick_stats_.size() < max_roads) {
+        road_tick_stats_.resize(max_roads);
+        road_tick_epochs_.resize(max_roads, 0u);
+    }
+
+    ++road_tick_epoch_;
+    if (road_tick_epoch_ == 0) {
+        std::fill(road_tick_epochs_.begin(), road_tick_epochs_.end(), 0u);
+        road_tick_epoch_ = 1;
+    }
+
+    for (const auto& v : vehicles_) {
+        if (v.state == VehicleState::Arrived || v.current_road == kInvalidRoadId) continue;
+        const auto idx = static_cast<size_t>(v.current_road);
+        if (idx >= road_tick_stats_.size()) continue;
+
+        if (road_tick_epochs_[idx] != road_tick_epoch_) {
+            road_tick_epochs_[idx] = road_tick_epoch_;
+            road_tick_stats_[idx]  = RoadTickStats{};
+        }
+
+        auto& st = road_tick_stats_[idx];
+        st.total_count++;
+        st.speed_sum += v.speed_mps;
+        if (v.state == VehicleState::Stopped || v.speed_mps < 0.5f) {
+            st.queued_count++;
+            st.wait_sum += v.wait_time_s;
+        }
+    }
+}
+
+void Simulation::fill_rl_observation_from_stats(
+    const TrafficSignalController& ctrl,
+    float*                         out_obs) const noexcept {
+    std::fill_n(out_obs, RLController::OBSERVATION_DIM, 0.0f);
+    if (ctrl.phases().size() < 2) return;
+
+    const auto& p0_roads = ctrl.phases()[0].green_roads;
+    const auto& p1_roads = ctrl.phases()[1].green_roads;
+
+    float q_p0 = 0.0f, q_p1 = 0.0f;
+    float app_p0 = 0.0f, app_p1 = 0.0f;
+    float spd_sum_p0 = 0.0f, spd_sum_p1 = 0.0f;
+    uint32_t cnt_p0 = 0, cnt_p1 = 0;
+    float wait_sum_p0 = 0.0f, wait_sum_p1 = 0.0f;
+
+    for (RoadId rid : p0_roads) {
+        const auto idx = static_cast<size_t>(rid);
+        if (idx < road_tick_epochs_.size() && road_tick_epochs_[idx] == road_tick_epoch_) {
+            const auto& st = road_tick_stats_[idx];
+            cnt_p0      += st.total_count;
+            spd_sum_p0  += st.speed_sum;
+            q_p0        += static_cast<float>(st.queued_count);
+            app_p0      += static_cast<float>(st.total_count - st.queued_count);
+            wait_sum_p0 += st.wait_sum;
+        }
+    }
+
+    for (RoadId rid : p1_roads) {
+        if (std::find(p0_roads.begin(), p0_roads.end(), rid) != p0_roads.end()) continue;
+        const auto idx = static_cast<size_t>(rid);
+        if (idx < road_tick_epochs_.size() && road_tick_epochs_[idx] == road_tick_epoch_) {
+            const auto& st = road_tick_stats_[idx];
+            cnt_p1      += st.total_count;
+            spd_sum_p1  += st.speed_sum;
+            q_p1        += static_cast<float>(st.queued_count);
+            app_p1      += static_cast<float>(st.total_count - st.queued_count);
+            wait_sum_p1 += st.wait_sum;
+        }
+    }
+
+    constexpr float kMaxQueueNorm = 20.0f;
+    constexpr float kMaxSpeedNorm = 13.89f;
+    constexpr float kMaxWaitNorm  = 60.0f;
+
+    const float spd_p0  = (cnt_p0 > 0) ? (spd_sum_p0 / static_cast<float>(cnt_p0)) : kMaxSpeedNorm;
+    const float spd_p1  = (cnt_p1 > 0) ? (spd_sum_p1 / static_cast<float>(cnt_p1)) : kMaxSpeedNorm;
+    const float wait_p0 = (q_p0 > 0.0f) ? (wait_sum_p0 / q_p0) : 0.0f;
+    const float wait_p1 = (q_p1 > 0.0f) ? (wait_sum_p1 / q_p1) : 0.0f;
+
+    out_obs[0] = std::clamp(q_p0 / kMaxQueueNorm, 0.0f, 1.0f);
+    out_obs[1] = std::clamp(q_p1 / kMaxQueueNorm, 0.0f, 1.0f);
+    out_obs[2] = std::clamp(app_p0 / kMaxQueueNorm, 0.0f, 1.0f);
+    out_obs[3] = std::clamp(app_p1 / kMaxQueueNorm, 0.0f, 1.0f);
+    out_obs[4] = std::clamp(spd_p0 / kMaxSpeedNorm, 0.0f, 1.0f);
+    out_obs[5] = std::clamp(spd_p1 / kMaxSpeedNorm, 0.0f, 1.0f);
+
+    out_obs[6] = (ctrl.current_phase_index() == 0) ? 0.0f : 1.0f;
+
+    float max_green = 45.0f;
+    if (const auto* rlc = ctrl.as<RLController>()) {
+        max_green = rlc->config().max_green_s;
+        out_obs[8] = rlc->is_in_transition() ? 1.0f : 0.0f;
+        out_obs[9] = rlc->can_switch() ? 1.0f : 0.0f;
+    } else {
+        out_obs[8] = (ctrl.current_stage() != PhaseStage::Green) ? 1.0f : 0.0f;
+        out_obs[9] = (ctrl.current_stage() == PhaseStage::Green && ctrl.stage_elapsed_s() >= 4.0f) ? 1.0f : 0.0f;
+    }
+    out_obs[7]  = std::clamp(ctrl.stage_elapsed_s() / max_green, 0.0f, 1.0f);
+    out_obs[10] = std::clamp(wait_p0 / kMaxWaitNorm, 0.0f, 1.0f);
+    out_obs[11] = std::clamp(wait_p1 / kMaxWaitNorm, 0.0f, 1.0f);
 }
 
 std::vector<float> Simulation::compute_rl_observation(IntersectionId id) const {
