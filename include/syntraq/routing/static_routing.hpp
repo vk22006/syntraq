@@ -13,6 +13,7 @@
 #include "syntraq/routing/route_cost.hpp"
 #include "syntraq/routing/router.hpp"
 
+#include <cstdint>
 #include <memory>
 
 namespace syntraq {
@@ -27,11 +28,11 @@ public:
     explicit StaticRouting(Algorithm algo = Algorithm::AStar,
                            RoadCostFunction cost_fn = DistanceCost{});
 
-    ~StaticRouting() override = default;
+    ~StaticRouting() override;
 
     // Movable, non-copyable due to router ownership
-    StaticRouting(StaticRouting&&) noexcept = default;
-    StaticRouting& operator=(StaticRouting&&) noexcept = default;
+    StaticRouting(StaticRouting&&) noexcept;
+    StaticRouting& operator=(StaticRouting&&) noexcept;
     StaticRouting(const StaticRouting&) = delete;
     StaticRouting& operator=(const StaticRouting&) = delete;
 
@@ -54,11 +55,22 @@ public:
         return cost_fn_;
     }
 
+    /// Enable or disable internal topology-validated route cache (enabled by default).
+    void set_cache_enabled(bool enabled) noexcept;
+    [[nodiscard]] bool is_cache_enabled() const noexcept { return cache_enabled_; }
+    void clear_cache() const noexcept;
+    [[nodiscard]] uint64_t cache_hits() const noexcept;
+    [[nodiscard]] uint64_t cache_misses() const noexcept;
+
 private:
+    struct RouteCache;
+
     Algorithm                       algorithm_{ Algorithm::AStar };
     RoadCostFunction                cost_fn_{ DistanceCost{} };
     std::unique_ptr<AStarRouter>    astar_{ nullptr };
     std::unique_ptr<DijkstraRouter> dijkstra_{ nullptr };
+    bool                            cache_enabled_{ true };
+    std::unique_ptr<RouteCache>     cache_;
 
     void rebuild_backends();
 };
