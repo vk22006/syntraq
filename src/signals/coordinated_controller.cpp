@@ -7,7 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <sstream>
+#include <cstdio>
 
 namespace syntraq {
 
@@ -284,11 +284,13 @@ CoordinatedDecision CoordinatedController::evaluate_coordination_decision() {
                 if (nb.spillback_imminent || queue_exceeded || ratio_exceeded) {
                     spillback_mitigations_count_++;
                     last_decision_ = CoordinatedDecision::MitigateSpillback;
-                    std::ostringstream ss;
-                    ss << "Downstream link (to Intersection " << static_cast<uint32_t>(nb.neighbor_id)
-                       << ") congested [queue=" << nb.downstream_queue
-                       << "] -> truncating green to avoid queue spillback";
-                    last_reason_ = ss.str();
+                    char buf[160];
+                    const int len = std::snprintf(buf, sizeof(buf),
+                        "Downstream link (to Intersection %u) congested [queue=%u] -> truncating green to avoid queue spillback",
+                        static_cast<uint32_t>(nb.neighbor_id), nb.downstream_queue);
+                    if (len > 0) {
+                        last_reason_.assign(buf, static_cast<size_t>(std::min<int>(len, static_cast<int>(sizeof(buf) - 1))));
+                    }
                     return CoordinatedDecision::MitigateSpillback;
                 }
             }
@@ -313,12 +315,15 @@ CoordinatedDecision CoordinatedController::evaluate_coordination_decision() {
                             const float target_ext = std::min(config_.max_green_s,
                                                               stage_elapsed_s_ + config_.progression_window_s);
                             current_stage_duration_ = std::max(current_stage_duration_, target_ext);
-                            std::ostringstream ss;
-                            ss << "Holding green for arriving upstream platoon from Intersection "
-                               << static_cast<uint32_t>(nb.neighbor_id)
-                               << " (ETA=" << nb.estimated_platoon_eta_s << "s, size="
-                               << nb.estimated_platoon_size << " veh)";
-                            last_reason_ = ss.str();
+                            char buf[160];
+                            const int len = std::snprintf(buf, sizeof(buf),
+                                "Holding green for arriving upstream platoon from Intersection %u (ETA=%.1fs, size=%u veh)",
+                                static_cast<uint32_t>(nb.neighbor_id),
+                                static_cast<double>(nb.estimated_platoon_eta_s),
+                                nb.estimated_platoon_size);
+                            if (len > 0) {
+                                last_reason_.assign(buf, static_cast<size_t>(std::min<int>(len, static_cast<int>(sizeof(buf) - 1))));
+                            }
                             return CoordinatedDecision::ExtendGreenWave;
                         }
                     }
