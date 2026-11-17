@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <fstream>
 #include <iomanip>
-#include <map>
 #include <sstream>
 
 namespace syntraq {
@@ -165,8 +164,14 @@ void TrafficMetricsCollector::record_tick(float                       dt,
     double   norm_waits         = 0.0;
     double   norm_travels       = 0.0;
 
-    // Track lane queue depths for max queue detection
-    std::map<std::pair<RoadId, uint32_t>, uint32_t> lane_queues;
+    // Advance epoch for O(1) zero-allocation lane queue tracking
+    ++lane_queue_epoch_;
+    if (lane_queue_epoch_ == 0) {
+        std::fill(lane_queue_epochs_.begin(), lane_queue_epochs_.end(), 0u);
+        lane_queue_epoch_ = 1;
+    }
+
+    uint32_t current_max_lane_queue = 0;
 
     for (const auto& v : active_vehicles) {
         sum_speeds  += static_cast<double>(v.speed_mps);
@@ -188,14 +193,28 @@ void TrafficMetricsCollector::record_tick(float                       dt,
         const bool is_queued = (v.state == VehicleState::Stopped || v.speed_mps < 0.5f);
         if (is_queued) {
             queued_count++;
-            lane_queues[{v.current_road, v.lane_index}]++;
-        }
-    }
-
-    uint32_t current_max_lane_queue = 0;
-    for (const auto& [lane, count] : lane_queues) {
-        if (count > current_max_lane_queue) {
-            current_max_lane_queue = count;
+            if (v.current_road != kInvalidRoadId) {
+                if (v.lane_index >= lane_queue_stride_) {
+                    lane_queue_stride_ = v.lane_index + 1;
+                    lane_queue_epochs_.clear();
+                    lane_queue_counts_.clear();
+                }
+                const size_t key = static_cast<size_t>(v.current_road) * lane_queue_stride_ + v.lane_index;
+                if (key >= lane_queue_counts_.size()) {
+                    const size_t new_sz = std::max<size_t>(key + 1, lane_queue_counts_.size() * 2 + 64);
+                    lane_queue_counts_.resize(new_sz, 0u);
+                    lane_queue_epochs_.resize(new_sz, 0u);
+                }
+                if (lane_queue_epochs_[key] != lane_queue_epoch_) {
+                    lane_queue_epochs_[key] = lane_queue_epoch_;
+                    lane_queue_counts_[key] = 1u;
+                } else {
+                    lane_queue_counts_[key]++;
+                }
+                if (lane_queue_counts_[key] > current_max_lane_queue) {
+                    current_max_lane_queue = lane_queue_counts_[key];
+                }
+            }
         }
     }
 
