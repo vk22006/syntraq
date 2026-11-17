@@ -7,20 +7,9 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iomanip>
-#include <sstream>
+#include <cstdio>
 
 namespace syntraq {
-
-namespace {
-
-std::string format_float(float val, int precision = 1) {
-    std::ostringstream ss;
-    ss << std::fixed << std::setprecision(precision) << val;
-    return ss.str();
-}
-
-} // namespace
 
 // ── Constructor ──────────────────────────────────────────────────────────────
 
@@ -49,6 +38,10 @@ AdaptiveController::AdaptiveController(
         }
     }
 
+    local_queues_.assign(all_incoming_roads_.size(), 0u);
+    local_wait_times_.assign(all_incoming_roads_.size(), 0.0f);
+    last_decision_reason_.reserve(160);
+
     for (RoadId r : all_incoming_roads_) {
         lights_[r] = TrafficLight{ r, intersection_id_, SignalColor::Red };
     }
@@ -61,8 +54,29 @@ AdaptiveController::AdaptiveController(
 void AdaptiveController::observe_traffic(
     const std::unordered_map<RoadId, uint32_t>& queues,
     const std::unordered_map<RoadId, float>&    wait_times) {
-    observed_queues_     = queues;
-    observed_wait_times_ = wait_times;
+    const size_t n = all_incoming_roads_.size();
+    if (local_queues_.size() != n) {
+        local_queues_.assign(n, 0u);
+        local_wait_times_.assign(n, 0.0f);
+    }
+
+    if (queues.empty()) {
+        std::fill(local_queues_.begin(), local_queues_.end(), 0u);
+    } else {
+        for (size_t i = 0; i < n; ++i) {
+            const auto it = queues.find(all_incoming_roads_[i]);
+            local_queues_[i] = (it != queues.end()) ? it->second : 0u;
+        }
+    }
+
+    if (wait_times.empty()) {
+        std::fill(local_wait_times_.begin(), local_wait_times_.end(), 0.0f);
+    } else {
+        for (size_t i = 0; i < n; ++i) {
+            const auto it = wait_times.find(all_incoming_roads_[i]);
+            local_wait_times_[i] = (it != wait_times.end()) ? it->second : 0.0f;
+        }
+    }
 }
 
 void AdaptiveController::tick(float dt) {
@@ -185,8 +199,8 @@ void AdaptiveController::reset() {
     shortenings_count_         = 0;
     switches_count_            = 0;
     emergency_preemption_road_ = kInvalidRoadId;
-    observed_queues_.clear();
-    observed_wait_times_.clear();
+    local_queues_.assign(all_incoming_roads_.size(), 0u);
+    local_wait_times_.assign(all_incoming_roads_.size(), 0.0f);
     update_lights();
 }
 
@@ -205,37 +219,32 @@ void AdaptiveController::evaluate_green_decision() {
     if (phases_.empty() || current_phase_idx_ >= phases_.size()) return;
     const auto& phase = phases_[current_phase_idx_];
 
-    // 1. Calculate active queue on current green approach roads
-    uint32_t current_queue = 0;
-    for (RoadId r : phase.green_roads) {
-        const auto it = observed_queues_.find(r);
-        if (it != observed_queues_.end()) {
-            current_queue += it->second;
+    // Single pass over local incoming roads (2-4 entries, zero hash lookups)
+    uint32_t current_queue     = 0;
+    uint32_t opposing_queue    = 0;
+    float    max_opposing_wait = 0.0f;
+    const size_t n = std::min(all_incoming_roads_.size(), local_queues_.size());
+    for (size_t i = 0; i < n; ++i) {
+        const RoadId r = all_incoming_roads_[i];
+        if (phase.contains_road(r)) {
+            current_queue += local_queues_[i];
+        } else {
+            opposing_queue += local_queues_[i];
+            if (local_wait_times_[i] > max_opposing_wait) {
+                max_opposing_wait = local_wait_times_[i];
+            }
         }
     }
 
-    // 2. Calculate opposing queued vehicles and max waiting time
-    uint32_t opposing_queue    = 0;
-    float    max_opposing_wait = 0.0f;
-    for (RoadId r : all_incoming_roads_) {
-        if (!phase.contains_road(r)) {
-            const auto q_it = observed_queues_.find(r);
-            if (q_it != observed_queues_.end()) {
-                opposing_queue += q_it->second;
-            }
-            const auto w_it = observed_wait_times_.find(r);
-            if (w_it != observed_wait_times_.end() && w_it->second > max_opposing_wait) {
-                max_opposing_wait = w_it->second;
-            }
-        }
-    }
+    char reason_buf[160];
 
     // ── Rule 1: Mandatory Minimum Green Constraint ───────────────────────────
     if (stage_elapsed_s_ < config_.min_green_s) {
         last_decision_ = AdaptiveDecision::Hold;
-        last_decision_reason_ = "Serving minimum green (" +
-                                format_float(stage_elapsed_s_) + "s / " +
-                                format_float(config_.min_green_s) + "s)";
+        const int len = std::snprintf(reason_buf, sizeof(reason_buf),
+            "Serving minimum green (%.1fs / %.1fs)",
+            static_cast<double>(stage_elapsed_s_), static_cast<double>(config_.min_green_s));
+        if (len > 0) last_decision_reason_.assign(reason_buf, static_cast<size_t>(std::min<int>(len, static_cast<int>(sizeof(reason_buf) - 1))));
         return;
     }
 
@@ -244,18 +253,19 @@ void AdaptiveController::evaluate_green_decision() {
         if (current_queue == 0 && opposing_queue > 0) {
             last_decision_ = AdaptiveDecision::ShortenPhase;
             shortenings_count_++;
-            last_decision_reason_ = "Shortening green early: queue cleared (0 veh) while opposing queue (" +
-                                    std::to_string(opposing_queue) + " veh) waiting at " +
-                                    format_float(stage_elapsed_s_) + "s";
+            const int len = std::snprintf(reason_buf, sizeof(reason_buf),
+                "Shortening green early: queue cleared (0 veh) while opposing queue (%u veh) waiting at %.1fs",
+                opposing_queue, static_cast<double>(stage_elapsed_s_));
+            if (len > 0) last_decision_reason_.assign(reason_buf, static_cast<size_t>(std::min<int>(len, static_cast<int>(sizeof(reason_buf) - 1))));
             transition_to_yellow();
             return;
         }
 
         last_decision_ = AdaptiveDecision::Hold;
-        last_decision_reason_ = "Serving nominal green (" +
-                                format_float(stage_elapsed_s_) + "s / " +
-                                format_float(config_.nominal_green_s) + "s, queue: " +
-                                std::to_string(current_queue) + ")";
+        const int len = std::snprintf(reason_buf, sizeof(reason_buf),
+            "Serving nominal green (%.1fs / %.1fs, queue: %u)",
+            static_cast<double>(stage_elapsed_s_), static_cast<double>(config_.nominal_green_s), current_queue);
+        if (len > 0) last_decision_reason_.assign(reason_buf, static_cast<size_t>(std::min<int>(len, static_cast<int>(sizeof(reason_buf) - 1))));
         return;
     }
 
@@ -263,8 +273,10 @@ void AdaptiveController::evaluate_green_decision() {
     if (stage_elapsed_s_ >= config_.max_green_s) {
         last_decision_ = AdaptiveDecision::SwitchPhase;
         switches_count_++;
-        last_decision_reason_ = "Switching phase: max green limit reached (" +
-                                format_float(config_.max_green_s) + "s)";
+        const int len = std::snprintf(reason_buf, sizeof(reason_buf),
+            "Switching phase: max green limit reached (%.1fs)",
+            static_cast<double>(config_.max_green_s));
+        if (len > 0) last_decision_reason_.assign(reason_buf, static_cast<size_t>(std::min<int>(len, static_cast<int>(sizeof(reason_buf) - 1))));
         transition_to_yellow();
         return;
     }
@@ -273,9 +285,10 @@ void AdaptiveController::evaluate_green_decision() {
     if (max_opposing_wait >= config_.max_wait_threshold_s && opposing_queue > 0) {
         last_decision_ = AdaptiveDecision::SwitchPhase;
         switches_count_++;
-        last_decision_reason_ = "Switching phase: opposing wait (" +
-                                format_float(max_opposing_wait) + "s) reached starvation threshold (" +
-                                format_float(config_.max_wait_threshold_s) + "s)";
+        const int len = std::snprintf(reason_buf, sizeof(reason_buf),
+            "Switching phase: opposing wait (%.1fs) reached starvation threshold (%.1fs)",
+            static_cast<double>(max_opposing_wait), static_cast<double>(config_.max_wait_threshold_s));
+        if (len > 0) last_decision_reason_.assign(reason_buf, static_cast<size_t>(std::min<int>(len, static_cast<int>(sizeof(reason_buf) - 1))));
         transition_to_yellow();
         return;
     }
@@ -287,19 +300,20 @@ void AdaptiveController::evaluate_green_decision() {
     if (current_has_demand && (higher_or_equal_demand || opposing_queue == 0)) {
         last_decision_ = AdaptiveDecision::ExtendGreen;
         extensions_count_++;
-        last_decision_reason_ = "Extending green: active current queue (" +
-                                std::to_string(current_queue) + " veh) >= opposing (" +
-                                std::to_string(opposing_queue) + " veh, max wait: " +
-                                format_float(max_opposing_wait) + "s)";
+        const int len = std::snprintf(reason_buf, sizeof(reason_buf),
+            "Extending green: active current queue (%u veh) >= opposing (%u veh, max wait: %.1fs)",
+            current_queue, opposing_queue, static_cast<double>(max_opposing_wait));
+        if (len > 0) last_decision_reason_.assign(reason_buf, static_cast<size_t>(std::min<int>(len, static_cast<int>(sizeof(reason_buf) - 1))));
         return;
     }
 
     // ── Rule 6: Normal Expiration / Switch to Higher Opposing Demand ──────────
     last_decision_ = AdaptiveDecision::SwitchPhase;
     switches_count_++;
-    last_decision_reason_ = "Switching phase: opposing demand (" +
-                            std::to_string(opposing_queue) + " veh) exceeds current (" +
-                            std::to_string(current_queue) + " veh)";
+    const int len = std::snprintf(reason_buf, sizeof(reason_buf),
+        "Switching phase: opposing demand (%u veh) exceeds current (%u veh)",
+        opposing_queue, current_queue);
+    if (len > 0) last_decision_reason_.assign(reason_buf, static_cast<size_t>(std::min<int>(len, static_cast<int>(sizeof(reason_buf) - 1))));
     transition_to_yellow();
 }
 
