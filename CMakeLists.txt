@@ -292,6 +292,16 @@ target_compile_options(syntraq_benchmarks PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
 
+add_executable(syntraq_bench_performance benchmarks/bench_performance.cpp)
+target_link_libraries(syntraq_bench_performance PRIVATE syntraq_core)
+if(WIN32)
+    target_link_libraries(syntraq_bench_performance PRIVATE psapi)
+endif()
+target_compile_options(syntraq_bench_performance PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
 # ---------------------------------------------------------------------------
 # Experiments Runner
 # ---------------------------------------------------------------------------
