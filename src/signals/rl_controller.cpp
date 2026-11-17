@@ -157,6 +157,13 @@ RLActionDecision RLController::step(const std::vector<float>& observation) {
     return decision;
 }
 
+void RLController::apply_batched_decision(const RLActionDecision& decision) {
+    last_decision_ = decision;
+    record_decision_telemetry(decision.latency_us);
+    const int action = (decision.best_action == 1) ? 1 : 0;
+    apply_action(action);
+}
+
 // ── AI Model Management ──────────────────────────────────────────────────────
 
 bool RLController::load_model(const std::string& model_path) {
