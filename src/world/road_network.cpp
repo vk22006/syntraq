@@ -12,14 +12,23 @@ namespace syntraq {
 // ── Mutation ──────────────────────────────────────────────────────────────────
 
 IntersectionId RoadNetwork::add_intersection(Vec2 position, std::string name) {
-    const auto id = static_cast<IntersectionId>(next_intersection_id_++);
+    const uint32_t raw_id = next_intersection_id_++;
+    const auto id = static_cast<IntersectionId>(raw_id);
 
     Intersection node;
     node.id       = id;
     node.position = position;
     node.name     = std::move(name);
 
-    intersections_.emplace(id, std::move(node));
+    auto [it, inserted] = intersections_.emplace(id, std::move(node));
+    if (inserted) {
+        if (inter_by_id_.size() <= raw_id) {
+            inter_by_id_.resize(static_cast<size_t>(raw_id) + 1, nullptr);
+        }
+        inter_by_id_[raw_id] = &it->second;
+        intersection_ids_.push_back(id);
+        ++topology_version_;
+    }
     return id;
 }
 
@@ -50,7 +59,8 @@ RoadId RoadNetwork::add_road(IntersectionId from,
         return kInvalidRoadId;
     }
 
-    const auto id = static_cast<RoadId>(next_road_id_++);
+    const uint32_t raw_id = next_road_id_++;
+    const auto id = static_cast<RoadId>(raw_id);
 
     Road r;
     r.id              = id;
@@ -67,33 +77,40 @@ RoadId RoadNetwork::add_road(IntersectionId from,
     }
 
     // Wire adjacency lists in the endpoint intersections
-    intersections_.at(from).outgoing_roads.push_back(id);
-    intersections_.at(to  ).incoming_roads.push_back(id);
+    inter_by_id_[static_cast<size_t>(from)]->outgoing_roads.push_back(id);
+    inter_by_id_[static_cast<size_t>(to  )]->incoming_roads.push_back(id);
 
-    roads_.emplace(id, std::move(r));
+    auto [it, inserted] = roads_.emplace(id, std::move(r));
+    if (inserted) {
+        if (road_by_id_.size() <= raw_id) {
+            road_by_id_.resize(static_cast<size_t>(raw_id) + 1, nullptr);
+        }
+        road_by_id_[raw_id] = &it->second;
+        ++topology_version_;
+    }
     return id;
 }
 
 // ── Query ─────────────────────────────────────────────────────────────────────
 
 const Intersection* RoadNetwork::intersection(IntersectionId id) const {
-    auto it = intersections_.find(id);
-    return (it != intersections_.end()) ? &it->second : nullptr;
+    const auto idx = static_cast<size_t>(id);
+    return (idx < inter_by_id_.size()) ? inter_by_id_[idx] : nullptr;
 }
 
 Intersection* RoadNetwork::intersection(IntersectionId id) {
-    auto it = intersections_.find(id);
-    return (it != intersections_.end()) ? &it->second : nullptr;
+    const auto idx = static_cast<size_t>(id);
+    return (idx < inter_by_id_.size()) ? inter_by_id_[idx] : nullptr;
 }
 
 const Road* RoadNetwork::road(RoadId id) const {
-    auto it = roads_.find(id);
-    return (it != roads_.end()) ? &it->second : nullptr;
+    const auto idx = static_cast<size_t>(id);
+    return (idx < road_by_id_.size()) ? road_by_id_[idx] : nullptr;
 }
 
 Road* RoadNetwork::road(RoadId id) {
-    auto it = roads_.find(id);
-    return (it != roads_.end()) ? &it->second : nullptr;
+    const auto idx = static_cast<size_t>(id);
+    return (idx < road_by_id_.size()) ? road_by_id_[idx] : nullptr;
 }
 
 std::vector<RoadId> RoadNetwork::outgoing_roads(IntersectionId id) const {
@@ -119,14 +136,19 @@ bool RoadNetwork::has_road(IntersectionId from, IntersectionId to) const {
 }
 
 bool RoadNetwork::has_intersection(IntersectionId id) const {
-    return intersections_.count(id) > 0;
+    const auto idx = static_cast<size_t>(id);
+    return idx < inter_by_id_.size() && inter_by_id_[idx] != nullptr;
 }
 
 void RoadNetwork::clear() {
     intersections_.clear();
     roads_.clear();
+    inter_by_id_.clear();
+    road_by_id_.clear();
+    intersection_ids_.clear();
     next_intersection_id_ = 0;
     next_road_id_         = 0;
+    ++topology_version_;
 }
 
 // ── Test-map factory ──────────────────────────────────────────────────────────
