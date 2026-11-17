@@ -6,11 +6,38 @@
 
 #include <algorithm>
 #include <cmath>
-#include <map>
+#include <limits>
 
 namespace syntraq {
 
 // ── Public ────────────────────────────────────────────────────────────────────
+
+void VehicleMovementSystem::ensure_bucket_capacity(uint32_t max_road_id, uint32_t min_lane_stride) {
+    bool stride_changed = false;
+    if (min_lane_stride > lane_stride_) {
+        lane_stride_ = min_lane_stride;
+        stride_changed = true;
+    }
+
+    const size_t required = static_cast<size_t>(max_road_id) * static_cast<size_t>(lane_stride_);
+    if (stride_changed) {
+        // Clear any residual buckets before resizing with new stride
+        for (size_t b : active_buckets_) {
+            if (b < lane_buckets_.size()) {
+                lane_buckets_[b].clear();
+            }
+        }
+        active_buckets_.clear();
+        std::fill(newly_entered_epoch_.begin(), newly_entered_epoch_.end(), 0u);
+    }
+
+    if (lane_buckets_.size() < required) {
+        lane_buckets_.resize(required);
+        newly_entered_epoch_.resize(required, 0u);
+        newly_entered_min_progress_.resize(required, std::numeric_limits<float>::max());
+        newly_entered_owner_.resize(required, std::numeric_limits<size_t>::max());
+    }
+}
 
 void VehicleMovementSystem::update(std::vector<Vehicle>& vehicles,
                                    const RoadNetwork&    network,
@@ -25,49 +52,110 @@ void VehicleMovementSystem::update(
     float                                                              dt) {
     if (vehicles.empty() || dt <= 0.0f) return;
 
-    const auto* controllers_ptr = signal_controllers.empty() ? nullptr : &signal_controllers;
-
-    // 1. Group active vehicle indices by (RoadId, lane_index)
-    std::map<std::pair<RoadId, uint32_t>, std::vector<size_t>> lane_groups;
-    for (size_t i = 0; i < vehicles.size(); ++i) {
-        if (vehicles[i].state == VehicleState::Arrived) continue;
-        lane_groups[{vehicles[i].current_road, vehicles[i].lane_index}].push_back(i);
+    const uint32_t max_road_id = network.max_road_id();
+    if (max_road_id == 0) {
+        for (auto& v : vehicles) {
+            if (v.state != VehicleState::Arrived) {
+                v.state = VehicleState::Arrived;
+            }
+        }
+        return;
     }
 
-    // 2. Sort vehicles in each lane group descending by progress_m (leader first)
-    for (auto& [key, indices] : lane_groups) {
-        std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
-            if (std::abs(vehicles[a].progress_m - vehicles[b].progress_m) > 1e-4f) {
-                return vehicles[a].progress_m > vehicles[b].progress_m;
+    // Clear buckets used in the previous tick (preserves inner vector capacities — zero heap allocations)
+    for (size_t b : active_buckets_) {
+        if (b < lane_buckets_.size()) {
+            lane_buckets_[b].clear();
+        }
+    }
+    active_buckets_.clear();
+
+    // Advance epoch stamp for O(1) reset of newly-entered lane tracking
+    ++bucket_epoch_;
+    if (bucket_epoch_ == 0) {
+        std::fill(newly_entered_epoch_.begin(), newly_entered_epoch_.end(), 0u);
+        bucket_epoch_ = 1;
+    }
+
+    // Determine required lane stride across active vehicles
+    uint32_t max_lane_needed = lane_stride_;
+    for (const auto& v : vehicles) {
+        if (v.state == VehicleState::Arrived) continue;
+        if (v.lane_index + 1 > max_lane_needed) {
+            max_lane_needed = v.lane_index + 1;
+        }
+    }
+    ensure_bucket_capacity(max_road_id, max_lane_needed);
+
+    const auto* controllers_ptr = signal_controllers.empty() ? nullptr : &signal_controllers;
+
+    // 1. Spatial lane-bucketing: group active vehicle indices by (RoadId, lane_index)
+    for (size_t i = 0; i < vehicles.size(); ++i) {
+        auto& v = vehicles[i];
+        if (v.state == VehicleState::Arrived) continue;
+
+        const auto rid_u32 = static_cast<uint32_t>(v.current_road);
+        if (rid_u32 >= max_road_id || !network.road(v.current_road)) {
+            v.state = VehicleState::Arrived;
+            continue;
+        }
+
+        const size_t bucket_idx = static_cast<size_t>(rid_u32) * lane_stride_ + v.lane_index;
+        auto& bucket = lane_buckets_[bucket_idx];
+        if (bucket.empty()) {
+            active_buckets_.push_back(bucket_idx);
+        }
+        bucket.push_back(i);
+    }
+
+    // Sort active bucket keys ascending so processing order matches std::map<(RoadId, lane)>
+    std::sort(active_buckets_.begin(), active_buckets_.end());
+
+    // 2. Process each active spatial lane bucket (leader to follower)
+    for (size_t bucket_idx : active_buckets_) {
+        auto& indices = lane_buckets_[bucket_idx];
+        if (indices.size() > 1) {
+            std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+                if (std::abs(vehicles[a].progress_m - vehicles[b].progress_m) > 1e-4f) {
+                    return vehicles[a].progress_m > vehicles[b].progress_m;
+                }
+                return vehicles[a].speed_mps > vehicles[b].speed_mps;
+            });
+        }
+
+        // Hoist road & traffic signal lookup ONCE per lane bucket (all vehicles share current_road)
+        const RoadId bucket_road_id = static_cast<RoadId>(bucket_idx / lane_stride_);
+        const Road* road = network.road(bucket_road_id);
+        if (!road) {
+            for (size_t v_idx : indices) {
+                vehicles[v_idx].state = VehicleState::Arrived;
             }
-            return vehicles[a].speed_mps > vehicles[b].speed_mps;
-        });
+            continue;
+        }
+
+        constexpr float kStopLineOffset = 2.0f; // 2m before intersection boundary
+        const float stop_line_m = std::max(0.0f, road->length_m - kStopLineOffset);
+
+        bool signal_can_proceed = true;
+        if (controllers_ptr) {
+            const auto it = controllers_ptr->find(road->to);
+            if (it != controllers_ptr->end()) {
+                signal_can_proceed = it->second.can_proceed(bucket_road_id);
+            }
+        }
 
         // 3. Process vehicles from front to back on this lane
         for (size_t rank = 0; rank < indices.size(); ++rank) {
             const size_t v_idx = indices[rank];
             auto& v = vehicles[v_idx];
 
-            const Road* road = network.road(v.current_road);
-            if (!road) {
-                v.state = VehicleState::Arrived;
-                continue;
-            }
+            const RoadId   orig_road = v.current_road;
+            const uint32_t orig_lane = v.lane_index;
 
-            constexpr float kStopLineOffset = 2.0f; // 2m before intersection boundary
-            const float stop_line_m = std::max(0.0f, road->length_m - kStopLineOffset);
             const float dist_to_stop_line = stop_line_m - v.progress_m;
+            bool can_proceed = signal_can_proceed;
 
-            // ── Check signal at approaching intersection (road->to) ───────
-            bool can_proceed = true;
-            if (controllers_ptr) {
-                const auto it = controllers_ptr->find(road->to);
-                if (it != controllers_ptr->end()) {
-                    can_proceed = it->second.can_proceed(v.current_road);
-                }
-            }
-
-            // ── Lane occupancy check for intersection entry ───────────────
+            // ── Lane occupancy check for intersection entry (O(1) spatial bucket lookup) ──
             if (can_proceed && (v.route_index + 1 < v.route.size())) {
                 const RoadId next_road_id = v.route[v.route_index + 1];
                 const Road* next_road = network.road(next_road_id);
@@ -97,9 +185,9 @@ void VehicleMovementSystem::update(
             // ── Calculate desired cruising / turning speed ────────────────
             float target_speed = v.is_emergency() ? v.max_speed_mps : std::min(v.max_speed_mps, road->speed_limit_mps);
 
-            if (can_proceed && (v.route_index + 1 < v.route.size())) {
+            if (can_proceed && (v.route_index + 1 < v.route.size()) && dist_to_stop_line <= 25.0f) {
                 const float turn_speed = calculate_turn_speed(v, *road, network);
-                if (dist_to_stop_line <= 25.0f && turn_speed < target_speed) {
+                if (turn_speed < target_speed) {
                     // Deceleration profile for turn entry
                     const float allowed_turn_entry = std::sqrt(
                         turn_speed * turn_speed + 2.0f * v.decel_mps2 * std::max(0.1f, dist_to_stop_line));
@@ -205,8 +293,8 @@ void VehicleMovementSystem::update(
             }
 
             // ── Advance road transitions if vehicle reaches road end ──────
+            const Road* cur = road;
             while (v.state == VehicleState::Moving) {
-                const Road* cur = network.road(v.current_road);
                 if (!cur || v.progress_m < cur->length_m) break;
 
                 const float overshoot = v.progress_m - cur->length_m;
@@ -219,10 +307,25 @@ void VehicleMovementSystem::update(
                 }
 
                 v.progress_m = overshoot;
-                const Road* next_r = network.road(v.current_road);
-                if (next_r) {
-                    v.max_speed_mps = next_r->speed_limit_mps;
-                    v.speed_mps     = std::min(v.speed_mps, next_r->speed_limit_mps);
+                cur = network.road(v.current_road);
+                if (cur) {
+                    v.max_speed_mps = cur->speed_limit_mps;
+                    v.speed_mps     = std::min(v.speed_mps, cur->speed_limit_mps);
+                }
+            }
+
+            // Record intra-tick road/lane transition for downstream O(1) entrance checks
+            if (v.state != VehicleState::Arrived &&
+                (v.current_road != orig_road || v.lane_index != orig_lane)) {
+                const auto new_rid = static_cast<uint32_t>(v.current_road);
+                if (new_rid < max_road_id && v.lane_index < lane_stride_) {
+                    const size_t new_b = static_cast<size_t>(new_rid) * lane_stride_ + v.lane_index;
+                    if (newly_entered_epoch_[new_b] != bucket_epoch_ ||
+                        v.progress_m < newly_entered_min_progress_[new_b]) {
+                        newly_entered_epoch_[new_b]        = bucket_epoch_;
+                        newly_entered_min_progress_[new_b] = v.progress_m;
+                        newly_entered_owner_[new_b]        = v_idx;
+                    }
                 }
             }
         }
@@ -249,11 +352,11 @@ float VehicleMovementSystem::calculate_turn_speed(
 
     const float dx_in  = inter_node->position.x - from_node->position.x;
     const float dy_in  = inter_node->position.y - from_node->position.y;
-    const float len_in = std::hypot(dx_in, dy_in);
+    const float len_in = std::sqrt(dx_in * dx_in + dy_in * dy_in);
 
     const float dx_out  = to_node->position.x - inter_node->position.x;
     const float dy_out  = to_node->position.y - inter_node->position.y;
-    const float len_out = std::hypot(dx_out, dy_out);
+    const float len_out = std::sqrt(dx_out * dx_out + dy_out * dy_out);
 
     if (len_in < 0.001f || len_out < 0.001f) {
         return next_road->speed_limit_mps;
@@ -280,7 +383,20 @@ bool VehicleMovementSystem::is_lane_entrance_occupied(
     float                       clearance_needed_m,
     const std::vector<Vehicle>& vehicles,
     size_t                      self_idx) const {
-    for (size_t i = 0; i < vehicles.size(); ++i) {
+    if (target_lane >= lane_stride_) return false;
+    const size_t bucket_idx = static_cast<size_t>(target_road_id) * lane_stride_ + target_lane;
+    if (bucket_idx >= lane_buckets_.size()) return false;
+
+    // 1. Check vehicles that transitioned into this lane earlier in the same tick (O(1))
+    if (newly_entered_epoch_[bucket_idx] == bucket_epoch_ &&
+        newly_entered_owner_[bucket_idx] != self_idx &&
+        newly_entered_min_progress_[bucket_idx] < clearance_needed_m) {
+        return true;
+    }
+
+    // 2. Check vehicles present in this spatial lane bucket at start of tick (O(k), k = lane density)
+    const auto& bucket = lane_buckets_[bucket_idx];
+    for (size_t i : bucket) {
         if (i == self_idx) continue;
         const auto& other = vehicles[i];
         if (other.state == VehicleState::Arrived) continue;
