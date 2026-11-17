@@ -31,6 +31,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Traffic-Aware Dynamic Routing | Multi-objective cost (distance + congestion + delay), Static vs TrafficAware | ✅ Complete |
 | Network-Level Coordinated Control | Multi-intersection coordination (Green-wave progression + spillback gating), network telemetry | ✅ Complete |
 | Emergency Priority Corridor | Emergency vehicle type, signal preemption & green hold, yielding & detour rerouting, zero-deadlock priority corridor | ✅ Complete |
+| Performance Optimization & Profiling | Spatial lane-bucketing, $O(1)$ dense graph lookup, cached & parallel pathfinding, batched ONNX RL inference, zero-allocation hot loops | ✅ Complete |
  
 ---
  
@@ -42,7 +43,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (205 tests across 16 suites) |
+| Tests          | GoogleTest + CTest (212 tests across 17 suites) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
@@ -156,6 +157,7 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+.\build\bin\test_performance_optimizations.exe
 .\build\bin\test_emergency_priority.exe
 .\build\bin\test_coordinated_control.exe
 .\build\bin\test_route_cost.exe
@@ -538,6 +540,45 @@ python scripts/analyze_emergency_priority.py
 
 ---
 
+## Performance Profiling & Engine Optimization
+
+SyntraQ includes a dedicated profiling and benchmark harness (`syntraq_bench_performance`) measuring simulation tick latency, vehicle throughput, per-subsystem CPU share, pathfinding latency, native ONNX inference speed, working-set memory, and AoS vs. SoA (ECS) cache behavior:
+
+```powershell
+# 1. Run full Release profiling & benchmark suite
+.\build-rel\bin\syntraq_bench_performance.exe --label after --csv data/perf_after.csv
+
+# 2. Generate before/after comparative dashboard and evaluation report
+python scripts/analyze_performance.py
+```
+
+### Targeted Bottleneck Optimizations
+- **Topology-Aligned Spatial Lane Bucketing (`VehicleMovementSystem`)**: Replaced per-tick `std::map` allocations and $O(N^2)$ linear entrance scans with a persistent flat spatial lane-bucket index, $O(1)$ epoch-stamped intra-tick transition tracking, and hoisted per-lane road/signal lookups (**13.5× faster** movement updates).
+- **$O(1)$ Dense Graph Indexing (`RoadNetwork`)**: Added dense ID-indexed pointer lookup caches (`inter_by_id_`, `road_by_id_`) and topology versioning alongside the `unordered_map` storage.
+- **Zero-Allocation Hot Paths (`TrafficAwareRouting`, `AdaptiveController`, `TrafficMetricsCollector`, `EmergencyPriorityManager`)**: Eliminated per-tick hash map rebuilds, full-network map copies in `AdaptiveController`, and `std::ostringstream` formatting stalls (**63.4× faster** `TrafficAwareRouting::update_from_simulation`, `-2.5 MB` RSS reduction on large grids).
+- **Reusable Flat-Array & Cached/Parallel Pathfinding (`AStarRouter`, `DijkstraRouter`, `StaticRouting`, `find_routes_parallel`)**: Switched to `thread_local` epoch-stamped flat workspaces, topology/version-validated route caches, and deterministic multi-threaded batch pathfinding (**14.9×–19.0× faster** on 50×50 grids, **154.8× faster** on repeated static O-D queries).
+- **True Batched ONNX RL Inference (`RLPolicyInference`, `Simulation`)**: Upgraded `predictBatch` / `predictBatchFlat` to single-call `[N, 12]` tensor evaluation with pre-allocated output tensors and $O(1)$ per-road observation extraction (**36.3× faster** 36-intersection batch inference at **`0.47 µs/agent`**, `> 2.1M decisions/s`).
+- **Empirical ECS Evaluation**: Microbenchmarking 5,000 vehicles showed compact 96-byte AoS (`std::vector<Vehicle>`, `8.44 µs/tick`) outperforms 6-array SoA (`38.11 µs/tick`) due to hardware prefetch efficiency; full ECS migration is unnecessary at current scale.
+
+### Before vs. After Benchmark Summary (Release ARM64)
+
+| Benchmark | Before | After | Speedup |
+| :--- | :---: | :---: | :---: |
+| **W1: 4×3 Rush Hour (Mean Tick / Throughput)** | $74.29\,\mu\text{s}$ (`0.92M veh/s`) | **$13.33\,\mu\text{s}$ (`5.13M veh/s`)** | **5.57×** |
+| **W2: 10×10 Grid, 500v (Mean Tick / Throughput)** | $956.82\,\mu\text{s}$ (`0.52M veh/s`) | **$123.17\,\mu\text{s}$ (`4.03M veh/s`)** | **7.77×** |
+| **W3: 12×12 Stress, 1200v (Mean Tick / Throughput)** | $1,304.40\,\mu\text{s}$ (`0.81M veh/s`) | **$303.73\,\mu\text{s}$ (`3.46M veh/s`)** | **4.29×** |
+| **W4: 6×6 Multi-RL ONNX, 300v (Mean / p95 Tick)** | $439.29\,\mu\text{s}$ / $1,357.30\,\mu\text{s}$ | **$67.66\,\mu\text{s}$ / $123.08\,\mu\text{s}$** | **6.49× / 11.03×** |
+| **1,000-Vehicle Subsystem Tick Sum** | $2,159.33\,\mu\text{s}$ | **$184.12\,\mu\text{s}$** | **11.73×** |
+| **A* 50×50 Grid (Sequential / Parallel MT)** | $618.24\,\mu\text{s}$ | **$41.44\,\mu\text{s}$ / $32.52\,\mu\text{s}$** | **14.92× / 19.01×** |
+| **StaticRouting 25×25 (Repeated O-D Cache)** | $94.41\,\mu\text{s}$ | **$0.61\,\mu\text{s}$** | **154.77×** |
+| **RL ONNX Batch-36 Inference** | $617.89\,\mu\text{s}$ (`17.16 µs/agent`) | **$17.01\,\mu\text{s}$ (`0.47 µs/agent`)** | **36.33×** |
+
+### Artifacts & Reports
+- **Detailed Profiling & Optimization Report**: [docs/performance_optimization_report.md](docs/performance_optimization_report.md)
+- **Before vs. After 4-Panel Dashboard**: [docs/performance_optimization_benchmark.png](docs/performance_optimization_benchmark.png)
+
+---
+
 ## Project Structure
 
 ```
@@ -547,7 +588,7 @@ SyntraQ/
 │   ├── world/         # Road network graph (Intersections & Roads) (.hpp)
 │   ├── vehicles/      # Vehicle kinematics, emergency priority manager, car-following, spawner (.hpp)
 │   ├── signals/       # Traffic signals (Interface, FixedTime, Adaptive, RL, Coordinated) (.hpp)
-│   ├── routing/       # Routing engine (Dijkstra, A*, Heuristics, Costs) (.hpp)
+│   ├── routing/       # Routing engine (Dijkstra, A*, Parallel batch, Heuristics, Costs) (.hpp)
 │   ├── metrics/       # Telemetry & ML dataset collectors (.hpp)
 │   ├── ai/            # Predictor, feature scaler, RL env, C-ABI, RLPolicyInference (.hpp / .h)
 │   ├── simulation/    # Headless simulation loop & state (.hpp)
@@ -564,9 +605,9 @@ SyntraQ/
 │   ├── rendering/     # Renderer and three-panel UI layout
 │   └── main.cpp       # CLI parsing and application entry point
 ├── experiments/       # Baseline experiments, controller comparison, emergency priority benchmark, and dataset generator
-├── scripts/           # ML training, DQN pipeline, ONNX exporter, Gymnasium env
-├── tests/             # GoogleTest & Python test suites (205 C++ tests + 6 Python tests)
-├── benchmarks/        # Routing engine benchmarks (Dijkstra vs A*)
+├── scripts/           # ML training, DQN pipeline, ONNX exporter, Gymnasium env, performance analyzer
+├── tests/             # GoogleTest & Python test suites (212 C++ tests + 6 Python tests)
+├── benchmarks/        # Routing engine & full simulation performance profiler benchmarks
 ├── configs/           # Scenario JSON configurations
 ├── data/              # Experiment datasets, ML training data, and reference validation sets
 ├── assets/            # Fonts, textures (future)
