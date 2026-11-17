@@ -5,8 +5,9 @@
 #include "syntraq/routing/astar_router.hpp"
 
 #include <algorithm>
-#include <queue>
-#include <unordered_map>
+#include <cstdint>
+#include <functional>
+#include <vector>
 
 namespace syntraq {
 
@@ -26,6 +27,29 @@ struct PQNode {
 struct Predecessor {
     IntersectionId from_node{ kInvalidIntersectionId };
     RoadId         road_id  { kInvalidRoadId };
+};
+
+/// Thread-local reusable A* search workspace (O(1) epoch reset, zero per-query allocations).
+struct AStarWorkspace {
+    std::vector<float>       g_score;
+    std::vector<Predecessor> came_from;
+    std::vector<uint32_t>    epoch;
+    std::vector<PQNode>      open_heap;
+    uint32_t                 current_epoch{ 0 };
+
+    void prepare(size_t max_nodes) {
+        if (g_score.size() < max_nodes) {
+            g_score.resize(max_nodes, 0.0f);
+            came_from.resize(max_nodes);
+            epoch.resize(max_nodes, 0u);
+        }
+        ++current_epoch;
+        if (current_epoch == 0) {
+            std::fill(epoch.begin(), epoch.end(), 0u);
+            current_epoch = 1;
+        }
+        open_heap.clear();
+    }
 };
 
 } // namespace
@@ -48,24 +72,43 @@ RouteResult AStarRouter::find_route_with_info(
         return { {}, 0.0f, 0, true };
     }
 
-    std::priority_queue<PQNode, std::vector<PQNode>, std::greater<PQNode>> open_set;
-    std::unordered_map<IntersectionId, float>       g_score;
-    std::unordered_map<IntersectionId, Predecessor> came_from;
+    const size_t max_nodes = static_cast<size_t>(network.max_intersection_id());
+    const auto src_idx = static_cast<size_t>(source);
+    const auto dst_idx = static_cast<size_t>(destination);
+    if (src_idx >= max_nodes || dst_idx >= max_nodes) {
+        return { {}, 0.0f, 0, false };
+    }
 
-    g_score[source] = 0.0f;
+    thread_local AStarWorkspace ws;
+    ws.prepare(max_nodes);
+    const uint32_t cur_epoch = ws.current_epoch;
+    auto& g_score   = ws.g_score;
+    auto& came_from = ws.came_from;
+    auto& epoch     = ws.epoch;
+    auto& open_heap = ws.open_heap;
+    constexpr std::greater<PQNode> heap_cmp{};
+
+    epoch[src_idx]   = cur_epoch;
+    g_score[src_idx] = 0.0f;
+
     float h0 = heuristic_fn_ ? heuristic_fn_(network, source, destination) : 0.0f;
     if (h0 < 0.0f) h0 = 0.0f;
-    open_set.push({ h0, 0.0f, source });
+    open_heap.push_back({ h0, 0.0f, source });
+    std::push_heap(open_heap.begin(), open_heap.end(), heap_cmp);
 
     uint32_t nodes_visited = 0;
     bool reached = false;
 
-    while (!open_set.empty()) {
-        auto [f, g, u] = open_set.top();
-        open_set.pop();
+    while (!open_heap.empty()) {
+        std::pop_heap(open_heap.begin(), open_heap.end(), heap_cmp);
+        const PQNode top = open_heap.back();
+        open_heap.pop_back();
 
-        auto g_it = g_score.find(u);
-        if (g_it != g_score.end() && g > g_it->second) {
+        const float g = top.g_score;
+        const IntersectionId u = top.id;
+        const auto u_idx = static_cast<size_t>(u);
+
+        if (epoch[u_idx] == cur_epoch && g > g_score[u_idx]) {
             continue;
         }
 
@@ -83,18 +126,22 @@ RouteResult AStarRouter::find_route_with_info(
             const Road* r = network.road(rid);
             if (!r) continue;
 
-            IntersectionId v = r->to;
+            const IntersectionId v = r->to;
+            const auto v_idx = static_cast<size_t>(v);
+            if (v_idx >= max_nodes) continue;
+
             float edge_cost = cost_fn_ ? cost_fn_(*r) : r->length_m;
             if (edge_cost < 0.0f) edge_cost = 0.0f;
 
-            float tentative_g = g + edge_cost;
-            auto v_it = g_score.find(v);
-            if (v_it == g_score.end() || tentative_g < v_it->second) {
-                g_score[v] = tentative_g;
-                came_from[v] = Predecessor{ u, rid };
+            const float tentative_g = g + edge_cost;
+            if (epoch[v_idx] != cur_epoch || tentative_g < g_score[v_idx]) {
+                epoch[v_idx]     = cur_epoch;
+                g_score[v_idx]   = tentative_g;
+                came_from[v_idx] = Predecessor{ u, rid };
                 float h = heuristic_fn_ ? heuristic_fn_(network, v, destination) : 0.0f;
                 if (h < 0.0f) h = 0.0f;
-                open_set.push({ tentative_g + h, tentative_g, v });
+                open_heap.push_back({ tentative_g + h, tentative_g, v });
+                std::push_heap(open_heap.begin(), open_heap.end(), heap_cmp);
             }
         }
     }
@@ -106,16 +153,16 @@ RouteResult AStarRouter::find_route_with_info(
     std::vector<RoadId> path;
     IntersectionId curr = destination;
     while (curr != source) {
-        auto it = came_from.find(curr);
-        if (it == came_from.end()) {
+        const auto curr_idx = static_cast<size_t>(curr);
+        if (curr_idx >= max_nodes || epoch[curr_idx] != cur_epoch) {
             return { {}, 0.0f, nodes_visited, false };
         }
-        path.push_back(it->second.road_id);
-        curr = it->second.from_node;
+        path.push_back(came_from[curr_idx].road_id);
+        curr = came_from[curr_idx].from_node;
     }
     std::reverse(path.begin(), path.end());
 
-    return { std::move(path), g_score[destination], nodes_visited, true };
+    return { std::move(path), g_score[dst_idx], nodes_visited, true };
 }
 
 } // namespace syntraq
