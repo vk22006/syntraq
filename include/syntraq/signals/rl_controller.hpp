@@ -84,6 +84,9 @@ public:
     /// Unified step: executes steps 1 through 4 sequentially
     RLActionDecision step(const std::vector<float>& observation);
 
+    /// Apply a pre-evaluated batched ONNX decision and record telemetry
+    void apply_batched_decision(const RLActionDecision& decision);
+
     /// Autonomous mode: when true, Simulation::tick automatically executes decision steps.
     /// Set to false when an external RL environment/agent explicitly steps the controller.
     [[nodiscard]] bool is_autonomous() const noexcept {
