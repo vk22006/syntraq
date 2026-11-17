@@ -16,7 +16,9 @@
 #include "syntraq/routing/router.hpp"
 #include "syntraq/vehicles/vehicle.hpp"
 
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -31,8 +33,8 @@ public:
 
     ~TrafficAwareRouting() override = default;
 
-    TrafficAwareRouting(TrafficAwareRouting&&) noexcept = default;
-    TrafficAwareRouting& operator=(TrafficAwareRouting&&) noexcept = default;
+    TrafficAwareRouting(TrafficAwareRouting&&) = delete;
+    TrafficAwareRouting& operator=(TrafficAwareRouting&&) = delete;
     TrafficAwareRouting(const TrafficAwareRouting&) = delete;
     TrafficAwareRouting& operator=(const TrafficAwareRouting&) = delete;
 
@@ -87,20 +89,55 @@ public:
     [[nodiscard]] const TrafficAwareCostConfig& cost_config() const noexcept;
 
     [[nodiscard]] const std::unordered_map<RoadId, RoadTrafficCondition>&
-        road_conditions() const noexcept { return conditions_; }
+        road_conditions() const noexcept;
 
     [[nodiscard]] RoadTrafficCondition condition_for(RoadId id) const noexcept;
 
     /// Compute effective total edge cost for a specific road with current traffic state
     [[nodiscard]] float compute_road_cost(const Road& road) const noexcept;
 
+    /// Enable or disable internal versioned route cache (enabled by default).
+    void set_cache_enabled(bool enabled) noexcept;
+    [[nodiscard]] bool is_cache_enabled() const noexcept { return cache_enabled_; }
+    void clear_cache() const noexcept;
+    [[nodiscard]] uint64_t cache_hits() const noexcept { return cache_hits_; }
+    [[nodiscard]] uint64_t cache_misses() const noexcept { return cache_misses_; }
+
 private:
-    TrafficAwareRoadCost                             cost_model_;
-    std::unordered_map<RoadId, RoadTrafficCondition> conditions_{};
-    std::unordered_set<RoadId>                       emergency_corridor_roads_{};
-    std::unique_ptr<AStarRouter>                     router_{ nullptr };
+    TrafficAwareRoadCost cost_model_;
+
+    // Dense epoch-stamped traffic condition storage (zero per-tick hash map allocations)
+    std::vector<RoadTrafficCondition> dense_conditions_{};
+    std::vector<uint32_t>             dense_epochs_{};
+    std::vector<float>                scratch_speed_sums_{};
+    std::vector<uint32_t>             active_road_ids_{};
+    uint32_t                          current_epoch_{ 1 };
+
+    // Lazy compatibility view for road_conditions()
+    mutable std::unordered_map<RoadId, RoadTrafficCondition> conditions_view_{};
+    mutable bool                                             conditions_view_dirty_{ false };
+
+    // Emergency corridor state with O(1) dense mask
+    std::unordered_set<RoadId> emergency_corridor_roads_{};
+    std::vector<uint8_t>       corridor_mask_{};
+    bool                       has_emergency_corridors_{ false };
+
+    std::unique_ptr<AStarRouter> router_{ nullptr };
+
+    // Generation-versioned route cache
+    bool     cache_enabled_{ true };
+    uint64_t state_version_{ 1 };
+    mutable std::mutex                              cache_mutex_{};
+    mutable std::unordered_map<uint64_t, RouteResult> route_cache_{};
+    mutable uint64_t                                cached_state_version_{ 0 };
+    mutable const RoadNetwork*                      cached_network_{ nullptr };
+    mutable uint64_t                                cached_topology_version_{ 0 };
+    mutable uint64_t                                cache_hits_{ 0 };
+    mutable uint64_t                                cache_misses_{ 0 };
 
     void setup_router();
+    void ensure_dense_capacity(uint32_t road_idx);
+    void advance_epoch() noexcept;
 };
 
 } // namespace syntraq
