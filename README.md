@@ -32,6 +32,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Network-Level Coordinated Control | Multi-intersection coordination (Green-wave progression + spillback gating), network telemetry | ✅ Complete |
 | Emergency Priority Corridor | Emergency vehicle type, signal preemption & green hold, yielding & detour rerouting, zero-deadlock priority corridor | ✅ Complete |
 | Performance Optimization & Profiling | Spatial lane-bucketing, $O(1)$ dense graph lookup, cached & parallel pathfinding, batched ONNX RL inference, zero-allocation hot loops | ✅ Complete |
+| Reproducible Experiment Framework | Parametric grid runner, multi-seed statistical batching, JSON/CSV exports, Python analysis pipeline, controller ranking, 95% CI | ✅ Complete |
  
 ---
  
@@ -43,7 +44,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (212 tests across 17 suites) |
+| Tests          | GoogleTest + CTest (218 tests across 18 suites) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
@@ -614,6 +615,40 @@ SyntraQ/
 ├── models/            # Trained PyTorch, DQN, classical, and ONNX models (.pt, .onnx, .joblib)
 └── docs/              # Layout screenshots, dataset specs, benchmarks, and evaluation reports
 ```
+
+---
+
+### Reproducible Experiment Framework & Automated Evaluation
+
+SyntraQ provides a fully automated, headless experiment runner (`syntraq_run_reproducible_experiments`) capable of executing parametric sweeps across scenarios, traffic densities, signal controllers, routing modes, random seeds, simulation durations, and model versions.
+
+```bash
+# Run a full multi-threaded experiment sweep across 4 controllers, 4 scenarios, 2 routing strategies, and 5 random seeds (160 runs total)
+./build/bin/syntraq_run_reproducible_experiments.exe \
+  --parallel \
+  --duration 120 \
+  --seeds 42,101,202,303,404 \
+  --scenarios low,medium,high,rush \
+  --controllers fixed,adaptive,rl,coordinated \
+  --routing static,traffic_aware \
+  --out-dir data/experiments/reproducible
+
+# Run the automated Python statistical analysis pipeline
+python scripts/analyze_experiments.py \
+  --input data/experiments/reproducible/experiment_runs.csv \
+  --summary data/experiments/reproducible/experiment_summary.csv \
+  --json data/experiments/reproducible/experiment_results.json \
+  --output-dir docs/experiments \
+  --charts-dir docs/experiments/charts
+```
+
+Outputs include:
+- `data/experiments/reproducible/experiment_runs.csv`: Raw per-run simulation telemetry records.
+- `data/experiments/reproducible/experiment_summary.csv`: Aggregated group metrics with Student-t 95% confidence intervals.
+- `data/experiments/reproducible/experiment_results.json`: Machine-readable comprehensive batch hierarchy.
+- `docs/experiments/experiment_analysis_report.md`: Automated Markdown report with comparative tables and controller rankings.
+- `docs/experiments/charts/controller_performance_dashboard.png`: 4-panel publication-grade comparative performance dashboard.
+- `docs/experiments/charts/routing_mode_comparison.png`: Static vs. Traffic-Aware routing interactions across signal controllers.
 
 ---
 
