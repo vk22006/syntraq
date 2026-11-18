@@ -206,6 +206,7 @@ add_library(syntraq_core STATIC
     src/ai/traffic_predictor.cpp
     src/ai/traffic_signal_env.cpp
     src/ai/rl_policy_inference.cpp
+    src/experiments/experiment_runner.cpp
 )
 target_include_directories(syntraq_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include
@@ -308,6 +309,13 @@ target_compile_options(syntraq_bench_performance PRIVATE
 add_executable(syntraq_experiments experiments/run_experiments.cpp)
 target_link_libraries(syntraq_experiments PRIVATE syntraq_core)
 target_compile_options(syntraq_experiments PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
+)
+
+add_executable(syntraq_run_reproducible_experiments experiments/run_reproducible_experiments.cpp)
+target_link_libraries(syntraq_run_reproducible_experiments PRIVATE syntraq_core)
+target_compile_options(syntraq_run_reproducible_experiments PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /permissive- /EHsc>
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Werror>
 )
