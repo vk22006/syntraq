@@ -1,0 +1,77 @@
+# SyntraQ Reproducible Experiment Analysis Report
+
+This report provides an automated, statistically rigorous evaluation of traffic signal controllers and routing strategies under identical scenario conditions.
+
+## 1. Controller Overall Rankings
+
+Controllers are ranked using a multi-criteria composite score across all scenarios and routing modes (evaluating Waiting Time, Trip Duration, Network Throughput, Congestion Ratio, and Queue Depths). **Lower composite rank indicates superior overall performance.**
+
+| Rank | Controller | Composite Score (1=Best) | Avg Waiting Time (s) | Avg Travel Time (s) | Avg Throughput (veh/h) | Congestion % |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: |
+| **1** | **Coordinated** | 1.77 | 7.32 ± 0.32 | 43.82 ± 1.22 | 1479.3 ± 278.1 | 14.0% |
+| **2** | **Adaptive** | 2.00 | 7.43 ± 0.40 | 43.72 ± 1.22 | 1492.0 ± 277.8 | 14.4% |
+| **3** | **FixedTime** | 2.48 | 7.78 ± 0.53 | 42.35 ± 1.39 | 1324.9 ± 243.5 | 15.7% |
+| **4** | **ReinforcementLearning** | 3.75 | 10.72 ± 1.00 | 44.01 ± 1.74 | 1265.7 ± 234.2 | 23.1% |
+
+---
+
+## 2. Scenario-by-Scenario Performance Matrix (95% Confidence Intervals)
+
+### Scenario: Low Traffic
+
+| Controller | Routing | Waiting Time (s) [95% CI] | Travel Time (s) [95% CI] | Throughput (vph) [95% CI] | Peak Queue | Congestion % |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **FixedTime** | Static | 7.01 ± 2.91 | 40.58 ± 7.89 | 473.6 ± 48.5 | 3 | 15.6% |
+| **FixedTime** | TrafficAware | 7.45 ± 4.04 | 41.32 ± 8.84 | 467.6 ± 42.4 | 2 | 16.2% |
+| **Adaptive** | Static | 7.41 ± 2.87 | 42.40 ± 9.20 | 521.6 ± 56.4 | 2 | 15.4% |
+| **Adaptive** | TrafficAware | 7.73 ± 2.37 | 42.80 ± 8.10 | 521.6 ± 56.4 | 2 | 15.5% |
+| **ReinforcementLearning** | Static | 8.01 ± 5.72 | 38.43 ± 6.91 | 461.6 ± 154.8 | 3 | 23.8% |
+| **ReinforcementLearning** | TrafficAware | 7.80 ± 4.80 | 40.01 ± 8.95 | 443.6 ± 121.7 | 3 | 23.8% |
+| **Coordinated** | Static | 7.65 ± 1.87 | 42.93 ± 8.88 | 515.6 ± 66.6 | 3 | 14.8% |
+| **Coordinated** | TrafficAware | 8.08 ± 1.39 | 43.33 ± 7.47 | 509.6 ± 69.6 | 3 | 15.1% |
+
+### Scenario: Medium Traffic
+
+| Controller | Routing | Waiting Time (s) [95% CI] | Travel Time (s) [95% CI] | Throughput (vph) [95% CI] | Peak Queue | Congestion % |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **FixedTime** | Static | 6.96 ± 0.95 | 41.13 ± 4.21 | 881.3 ± 100.6 | 3 | 14.3% |
+| **FixedTime** | TrafficAware | 7.23 ± 0.92 | 40.42 ± 4.97 | 845.3 ± 127.3 | 3 | 14.8% |
+| **Adaptive** | Static | 7.71 ± 1.74 | 42.52 ± 1.78 | 983.2 ± 55.2 | 3 | 14.6% |
+| **Adaptive** | TrafficAware | 7.28 ± 1.34 | 42.47 ± 3.17 | 929.2 ± 74.4 | 3 | 14.4% |
+| **ReinforcementLearning** | Static | 10.41 ± 3.34 | 43.09 ± 5.15 | 845.3 ± 115.9 | 3 | 23.9% |
+| **ReinforcementLearning** | TrafficAware | 9.92 ± 2.77 | 42.31 ± 6.24 | 833.3 ± 103.3 | 4 | 23.6% |
+| **Coordinated** | Static | 7.57 ± 1.35 | 43.38 ± 4.77 | 971.2 ± 56.4 | 3 | 14.1% |
+| **Coordinated** | TrafficAware | 6.82 ± 1.51 | 42.50 ± 3.37 | 923.2 ± 31.1 | 3 | 13.6% |
+
+### Scenario: High Traffic
+
+| Controller | Routing | Waiting Time (s) [95% CI] | Travel Time (s) [95% CI] | Throughput (vph) [95% CI] | Peak Queue | Congestion % |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **FixedTime** | Static | 8.40 ± 1.40 | 43.98 ± 3.97 | 1528.7 ± 91.2 | 4 | 15.8% |
+| **FixedTime** | TrafficAware | 7.92 ± 1.94 | 42.19 ± 5.72 | 1510.8 ± 56.4 | 4 | 15.7% |
+| **Adaptive** | Static | 7.35 ± 1.03 | 44.54 ± 2.33 | 1738.6 ± 114.7 | 4 | 13.5% |
+| **Adaptive** | TrafficAware | 7.46 ± 0.91 | 44.11 ± 2.30 | 1696.6 ± 42.4 | 5 | 13.7% |
+| **ReinforcementLearning** | Static | 12.73 ± 1.60 | 47.12 ± 4.33 | 1372.9 ± 137.8 | 4 | 22.4% |
+| **ReinforcementLearning** | TrafficAware | 12.71 ± 2.75 | 47.47 ± 5.61 | 1474.8 ± 103.3 | 5 | 23.1% |
+| **Coordinated** | Static | 7.10 ± 0.98 | 43.86 ± 2.55 | 1702.6 ± 61.2 | 4 | 13.2% |
+| **Coordinated** | TrafficAware | 7.14 ± 0.80 | 43.77 ± 2.83 | 1678.6 ± 168.5 | 5 | 13.6% |
+
+### Scenario: Rush Hour
+
+| Controller | Routing | Waiting Time (s) [95% CI] | Travel Time (s) [95% CI] | Throughput (vph) [95% CI] | Peak Queue | Congestion % |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **FixedTime** | Static | 8.89 ± 0.60 | 44.64 ± 0.89 | 2416.0 ± 97.1 | 8 | 16.9% |
+| **FixedTime** | TrafficAware | 8.38 ± 1.39 | 44.58 ± 2.91 | 2476.0 ± 183.5 | 6 | 16.0% |
+| **Adaptive** | Static | 7.59 ± 1.10 | 45.78 ± 3.47 | 2781.7 ± 127.3 | 5 | 14.6% |
+| **Adaptive** | TrafficAware | 6.89 ± 0.81 | 45.15 ± 3.12 | 2763.7 ± 190.5 | 6 | 13.9% |
+| **ReinforcementLearning** | Static | 12.27 ± 2.58 | 47.61 ± 4.61 | 2374.0 ± 228.5 | 9 | 21.7% |
+| **ReinforcementLearning** | TrafficAware | 11.90 ± 1.42 | 46.03 ± 2.26 | 2320.1 ± 221.1 | 7 | 22.5% |
+| **Coordinated** | Static | 7.18 ± 0.97 | 45.67 ± 2.35 | 2793.7 ± 71.6 | 6 | 14.2% |
+| **Coordinated** | TrafficAware | 6.99 ± 1.00 | 45.15 ± 3.84 | 2739.7 ± 242.1 | 7 | 13.6% |
+
+## 3. Visualizations
+
+Comparative plots generated by this analysis pipeline:
+- **Multi-Controller Dashboard**: `charts/controller_performance_dashboard.png`
+- **Routing Mode Interaction**: `charts/routing_mode_comparison.png`
+
