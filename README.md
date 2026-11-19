@@ -15,7 +15,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Core Engine & Simulation Loop | Deterministic fixed-timestep ($\Delta t = 0.10\,\text{s}$), pause/resume, speed presets | ✅ Complete |
 | Road Network Model | Directed multigraph topology, lane management, speed limits, geometric transforms | ✅ Complete |
 | Vehicle Kinematics & Behavior | Car-following model, emergency braking, queue formation, turn slowdowns, collision avoidance | ✅ Complete |
-| Visual UI & Layout | Three-region layout (Simulation Controls, Viewport, Traffic Telemetry & Signals) | ✅ Complete |
+| Interactive UI & Visual Overlays | Raylib + Dear ImGui interface, scenario & density sliders, AI telemetry & explainability, visual debugging overlays (routes, queues, phases, congestion, vehicle inspector) | ✅ Complete |
 | Fixed-Time Traffic Signals | Configurable cycle splits, green/yellow/all-red phases, multi-intersection coordination | ✅ Complete |
 | Routing Engine | Graph pathfinding with Dijkstra and A*, customizable heuristics, weighted travel costs | ✅ Complete |
 | Telemetry & Metrics Engine | Decoupled tracking: throughput, waiting times, queue lengths, average speed, congestion % | ✅ Complete |
@@ -664,28 +664,48 @@ Outputs include:
 
 ---
 
-## Simulation Controls & UI Layout
+## Simulation Controls & Interactive Visual Interface
 
-### Three-Region Interface
-- **Left Panel ("SyntraQ Simulation")**: Simulation controls (Play/Pause, Reset, Speed Presets), traffic scenario selector (Low, Med, High, Rush Hour), seed configuration, and road network statistics.
-- **Center Viewport**: Real-time traffic rendering with dynamic camera controls and vehicle visualizations.
-- **Right Panel ("SyntraQ Traffic")**: Live performance telemetry (Average Speed, Waiting Time, Queue Lengths, Throughput, Congestion Ratio) and live signal phase status for each junction.
+SyntraQ features a high-performance, dark-themed Raylib + Dear ImGui interactive interface designed to keep the UI strictly subordinate to the simulation physics and model behavior. The layout scales across window sizes (with dedicated presets for 1600×900, 1200×720, and compact displays).
 
-### Camera Controls
-- **Mouse Wheel**: Smooth zoom towards cursor position (0.25× – 4.0×).
-- **Middle Mouse Drag** or **Right Mouse Drag**: Pan the viewport.
-- **R Key** or **Reset View Button**: Frame and center the road network within the active viewport.
+### Three-Region Interface Layout
 
-### Simulation Controls
-- **Space** or **Pause / Resume Button**: Toggle simulation execution.
-- **Reset Sim Button**: Resets simulation clock, vehicles, and network to $t=0$.
-- **Speed Multipliers**: `0.25×`, `0.5×`, `1×`, `2×`, `5×` presets.
+1. **Left Panel ("SyntraQ Simulation")**:
+   - **Simulation Engine Controls**: Play/Pause toggle (`Space`), single-step tick advancement (`Step 1 Tick`), reset to $t=0$, and speed control (discrete presets `0.25×`, `0.5×`, `1×`, `2×`, `5×` plus a continuous `0.1× – 10.0×` slider).
+   - **Traffic Scenario & Density**: Scenario selection buttons (`Low`, `Medium`, `High`, `Rush Hour`, `Emergency`), interactive traffic density multiplier (`0.2× – 3.0×` with quick density buttons), and random seed selector.
+   - **Signal Controller & Routing Mode**: Runtime switching between signal controllers (`Fixed-Time`, `Adaptive`, `Reinforcement Learning`, `Coordinated`) and routing engines (`Static Shortest Path`, `Traffic-Aware Dynamic Routing`).
+   - **AI Subsystem Control**: Dedicated runtime toggle for neural policy inference (`AI Model Enabled` vs. zero-overhead actuated fallback).
+   - **Emergency Priority Controls**: Manual emergency vehicle trigger button, preemption toggle, and dynamic detour rerouting toggle.
+   - **Visual Debugging Toggles**: Granular checkboxes for routes, queues, intersection phases, predicted congestion, selected paths, and technical IDs.
 
-### Debug Visualizations (Toggleable)
-- **Intersection IDs**: Technical ID badges on junction nodes.
-- **Road IDs**: Segment ID labels centered along road links.
-- **Lane Boundaries**: Visible lane boundary guidelines.
-- **Vehicle Direction Vectors**: Forward heading vectors from vehicles.
+2. **Center Viewport**:
+   - **Direct 2D World View**: Fluid vehicle kinematics rendering, lane centerlines, road textures, crosswalks, and signal heads.
+   - **Interactive Vehicle Selection**: Click on any active vehicle to inspect its telemetry and highlight its full origin-to-destination path.
+   - **Camera Navigation**: Smooth mouse wheel zooming (`0.25× – 4.0×`), middle/right mouse dragging, `R` key to recenter view, and an optional **Follow Vehicle** tracking camera mode.
+
+3. **Right Panel ("SyntraQ Traffic")**:
+   - **Live Performance Telemetry**: Real-time fleet metrics updating every frame:
+     - Active Vehicles, Queued Vehicles, Total Spawned, and Successfully Arrived.
+     - Fleet Average Speed ($\text{km/h}$ and $\text{m/s}$), Free-Flow Ratio, Average Waiting Time, and Average Travel Time.
+     - Network Congestion Ratio (%) and Peak Single-Lane Queue Depth.
+     - Cumulative Network Throughput ($\text{veh/h}$) and Trip Completion Rate.
+     - Simulation Engine Performance: Actual simulation tick rate ($\text{FPS} / \text{Hz}$) and frame latency ($\text{ms}$).
+   - **Signal Status & AI Explainability**:
+     - Live phase breakdown, active green countdown timer, and phase duration for each intersection.
+     - **RL Decision Telemetry**: Real-time action display (`Maintain Phase` vs. `Switch Phase`), predicted Q-values / action values for each candidate action, neural inference latency ($\mu\text{s}$), and dynamic Decisions Per Second (DPS).
+     - **Adaptive Controller Telemetry**: Gap-out timer, minimum/maximum green bounds, and explainable decision triggers (`Queue Imbalance`, `Max Green Expired`, `Gap-Out Threshold`).
+     - **Coordinated Network Telemetry**: Upstream green-wave progression alerts, downstream queue spillback gating, and inter-signal progression tags.
+   - **Selected Vehicle Inspector**: Displays vehicle ID, type (Normal vs. Emergency), current speed, acceleration, travel time, trip distance, destination intersection, and path hop progress.
+
+### Visual Debugging Overlays
+
+The visual debugging suite provides non-intrusive diagnostic overlays that render directly in the world coordinate space:
+
+- **Routes (`show_routes`)**: Directional chevrons and flow vectors drawn along road centerlines indicating network connectivity, lane configurations, and allowed turning directions.
+- **Queues (`show_queues`)**: Semi-transparent red queue underlays beneath stopped vehicle clusters along with dynamic badge tags (`Q: <count>`) displaying localized queue depths.
+- **Intersection Phases (`show_intersection_phases`)**: Color-coded directional approach arrows (Green / Yellow / Red), numeric phase countdown timers, and controller decision badges (`ACTUATED`, `GREEN WAVE`, `SPILLBACK GATE`, `RL-SWITCH`).
+- **Predicted Congestion (`show_predicted_congestion`)**: Real-time road heatmap tinting transitioning from dark green (free-flow) through amber to bright crimson (saturated), displaying localized predicted travel delay badges (`+X.Xs`).
+- **Selected Paths (`show_selected_paths`)**: Dynamic cyan polyline tracing the exact sequence of road segments for the selected vehicle, accented by a pulsing radar beacon at the vehicle's position.
 
 ### Fixed-Timestep Architecture
 Simulation advancement is decoupled from rendering frame rate:
