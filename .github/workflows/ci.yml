@@ -10,6 +10,7 @@ env:
   BUILD_TYPE: Debug
   # Override the local Raylib SDK path for CI — Raylib is fetched from source
   RAYLIB_VERSION: "6.0"
+  ONNXRUNTIME_VERSION: "1.20.0"
 
 jobs:
   # ── Build + Test (Windows x64 MSVC) ──────────────────────────────────────
@@ -41,13 +42,25 @@ jobs:
           $sdkPath = $sdkPath -replace '\\', '/'
           "RAYLIB_SDK_DIR=$sdkPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Fetch ONNX Runtime release (x64 Windows)
+        shell: pwsh
+        run: |
+          $ver = "${{ env.ONNXRUNTIME_VERSION }}"
+          $url = "https://github.com/microsoft/onnxruntime/releases/download/v$ver/onnxruntime-win-x64-$ver.zip"
+          Invoke-WebRequest -Uri $url -OutFile ort.zip
+          Expand-Archive ort.zip -DestinationPath ort_sdk
+          $ortPath = (Get-ChildItem ort_sdk -Directory | Select-Object -First 1).FullName
+          $ortPath = $ortPath -replace '\\', '/'
+          "ONNXRUNTIME_DIR=$ortPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Configure (MSVC, x64)
         shell: pwsh
         run: |
           cmake -B build `
                 -G Ninja `
                 -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
-                -DRAYLIB_SDK_DIR="$env:RAYLIB_SDK_DIR"
+                -DRAYLIB_SDK_DIR="$env:RAYLIB_SDK_DIR" `
+                -DONNXRUNTIME_DIR="$env:ONNXRUNTIME_DIR"
 
       - name: Build
         shell: pwsh
@@ -88,12 +101,23 @@ jobs:
           SDK_PATH=$(ls -d raylib_sdk/*/  | head -1)
           echo "RAYLIB_SDK_DIR=${SDK_PATH%/}" >> $GITHUB_ENV
 
+      - name: Fetch ONNX Runtime release (Linux x64)
+        run: |
+          VER="${{ env.ONNXRUNTIME_VERSION }}"
+          URL="https://github.com/microsoft/onnxruntime/releases/download/v$VER/onnxruntime-linux-x64-$VER.tgz"
+          curl -L "$URL" -o ort.tar.gz
+          mkdir ort_sdk
+          tar -xzf ort.tar.gz -C ort_sdk
+          ORT_PATH=$(ls -d ort_sdk/*/ | head -1)
+          echo "ONNXRUNTIME_DIR=${ORT_PATH%/}" >> $GITHUB_ENV
+
       - name: Configure
         run: |
           cmake -B build \
                 -G Ninja \
                 -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
                 -DRAYLIB_SDK_DIR="${RAYLIB_SDK_DIR}" \
+                -DONNXRUNTIME_DIR="${ONNXRUNTIME_DIR}" \
                 -DCMAKE_C_COMPILER=gcc-14 \
                 -DCMAKE_CXX_COMPILER=g++-14
 
@@ -137,6 +161,16 @@ jobs:
           SDK_PATH=$(ls -d raylib_sdk/*/  | head -1)
           echo "RAYLIB_SDK_DIR=${SDK_PATH%/}" >> $GITHUB_ENV
 
+      - name: Fetch ONNX Runtime release (Linux x64)
+        run: |
+          VER="${{ env.ONNXRUNTIME_VERSION }}"
+          URL="https://github.com/microsoft/onnxruntime/releases/download/v$VER/onnxruntime-linux-x64-$VER.tgz"
+          curl -L "$URL" -o ort.tar.gz
+          mkdir ort_sdk
+          tar -xzf ort.tar.gz -C ort_sdk
+          ORT_PATH=$(ls -d ort_sdk/*/ | head -1)
+          echo "ONNXRUNTIME_DIR=${ORT_PATH%/}" >> $GITHUB_ENV
+
       - name: Configure with Sanitizers
         run: |
           cmake -B build \
@@ -144,6 +178,7 @@ jobs:
                 -DCMAKE_BUILD_TYPE=Debug \
                 -DENABLE_SANITIZER=ON \
                 -DRAYLIB_SDK_DIR="${RAYLIB_SDK_DIR}" \
+                -DONNXRUNTIME_DIR="${ONNXRUNTIME_DIR}" \
                 -DCMAKE_C_COMPILER=gcc-14 \
                 -DCMAKE_CXX_COMPILER=g++-14
 
