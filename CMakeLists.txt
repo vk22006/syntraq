@@ -22,6 +22,21 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # ---------------------------------------------------------------------------
+# Sanitizer builds (AddressSanitizer & UndefinedBehaviorSanitizer)
+# ---------------------------------------------------------------------------
+option(ENABLE_SANITIZER "Enable Address and UndefinedBehavior sanitizers" OFF)
+if(ENABLE_SANITIZER)
+    if(MSVC)
+        message(STATUS "Enabling AddressSanitizer for MSVC (/fsanitize=address)")
+        add_compile_options(/fsanitize=address)
+    else()
+        message(STATUS "Enabling AddressSanitizer and UndefinedBehaviorSanitizer for GCC/Clang (-fsanitize=address,undefined)")
+        add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=address,undefined)
+    endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Output directories
 # ---------------------------------------------------------------------------
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
