@@ -33,6 +33,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Emergency Priority Corridor | Emergency vehicle type, signal preemption & green hold, yielding & detour rerouting, zero-deadlock priority corridor | ✅ Complete |
 | Performance Optimization & Profiling | Spatial lane-bucketing, $O(1)$ dense graph lookup, cached & parallel pathfinding, batched ONNX RL inference, zero-allocation hot loops | ✅ Complete |
 | Reproducible Experiment Framework | Parametric grid runner, multi-seed statistical batching, JSON/CSV exports, Python analysis pipeline, controller ranking, 95% CI | ✅ Complete |
+| Automated System Quality & Testing | Rigorous testing (241 tests across 21 suites), end-to-end closed-loop integration tests, deterministic regression tests, ASan/UBSan sanitizers | ✅ Complete |
  
 ---
  
@@ -44,7 +45,7 @@ A research-oriented C++20 simulation platform that models urban traffic and eval
 | Build system   | CMake 4.x + Ninja              |
 | Rendering      | Raylib 6.0 (ARM64 MSVC)        |
 | UI / Debug     | Dear ImGui + rlImGui           |
-| Tests          | GoogleTest + CTest (218 tests across 18 suites) |
+| Tests          | GoogleTest + CTest (241 tests across 21 suites, ASan + UBSan sanitizers) |
 | CI             | GitHub Actions                 |
 | Data Analysis  | Python 3 (Pandas, NumPy, Matplotlib) |
 | Deep Learning  | PyTorch 2.x (CPU / CUDA)       |
@@ -146,9 +147,9 @@ Generated charts are saved to `data/experiments/charts/`:
 
 ---
 
-## Running Tests
+## Running Tests & Automated Quality Assurance
 
-SyntraQ maintains a test suite across kinematics, signal state machines, pathfinding algorithms, queue dynamics, metrics tracking, and training data generation:
+SyntraQ maintains a test suite (241 tests across 21 test suites) spanning kinematics, signal state machines, pathfinding algorithms, queue dynamics, closed-loop integration, deterministic regressions, and training data generation:
 
 ```powershell
 cd build
@@ -158,6 +159,12 @@ ctest --output-on-failure
 Or execute targeted test suites directly:
 
 ```powershell
+# System Integration & Quality Suites
+.\build\bin\test_system_integration.exe
+.\build\bin\test_deterministic_regression.exe
+.\build\bin\test_system_quality_expanded.exe
+
+# Specialized Subsystem Suites
 .\build\bin\test_performance_optimizations.exe
 .\build\bin\test_emergency_priority.exe
 .\build\bin\test_coordinated_control.exe
@@ -175,6 +182,17 @@ Or execute targeted test suites directly:
 
 # Run Python RL environment and PyTorch integration tests
 python -m unittest tests/test_traffic_signal_env.py
+```
+
+### Memory Safety & Sanitizer Builds
+
+SyntraQ supports AddressSanitizer (`ASan`) and UndefinedBehaviorSanitizer (`UBSan`) across compiler toolchains:
+
+```powershell
+# Configure with sanitizers enabled (GCC/Clang or MSVC)
+cmake -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_SANITIZER=ON
+cmake --build build-asan --parallel
+ctest --test-dir build-asan --output-on-failure --timeout 120
 ```
 
 ---
