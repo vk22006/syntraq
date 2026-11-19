@@ -83,6 +83,12 @@ public:
     void set_max_vehicles(uint32_t max);
     void set_seed(uint32_t seed);
 
+    void set_traffic_density(float density_multiplier);
+    [[nodiscard]] float traffic_density() const noexcept { return traffic_density_multiplier_; }
+
+    void set_ai_model_enabled(bool enabled);
+    [[nodiscard]] bool is_ai_model_enabled() const noexcept { return cfg_.enable_rl_model; }
+
     void set_allowed_spawn_origins(std::vector<IntersectionId> origins);
     void set_allowed_spawn_destinations(std::vector<IntersectionId> destinations);
     [[nodiscard]] const std::vector<IntersectionId>& allowed_spawn_origins() const noexcept { return allowed_origins_; }
@@ -147,6 +153,13 @@ public:
     [[nodiscard]] RoutingStrategyType routing_strategy_type() const noexcept {
         return cfg_.routing_strategy;
     }
+    [[nodiscard]] std::shared_ptr<TrafficAwareRouting> traffic_aware_router() const noexcept {
+        return traffic_aware_router_;
+    }
+
+    [[nodiscard]] const std::unordered_map<RoadId, uint32_t>& road_queues() const noexcept {
+        return road_queues_;
+    }
 
     // ── Traffic Metrics Subsystem ─────────────────────────────────────────
     [[nodiscard]] const TrafficMetricsCollector& metrics() const noexcept { return metrics_collector_; }
@@ -207,6 +220,7 @@ private:
     bool                  data_collection_enabled_{ false };
     float                 accumulator_{ 0.0f };
     float                 time_scale_ { 1.0f };
+    float                 traffic_density_multiplier_{ 1.0f };
     std::function<RoadNetwork()> network_factory_{};
     std::vector<IntersectionId>  allowed_origins_{};
     std::vector<IntersectionId>  allowed_destinations_{};
