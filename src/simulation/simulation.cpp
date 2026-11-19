@@ -350,10 +350,30 @@ void Simulation::set_scenario(TrafficScenario scenario, std::optional<uint32_t> 
     spawner_.max_vehicles     = scenario_cfg_.max_vehicles;
     spawner_.set_seed(scenario_cfg_.seed);
     state_.scenario           = scenario;
+    traffic_density_multiplier_ = 1.0f;
 
     metrics_collector_.set_scenario(scenario, scenario_cfg_.name);
     metrics_collector_.set_seed(scenario_cfg_.seed);
     data_collector_.set_run_metadata(run_id_, scenario, scenario_cfg_.name, scenario_cfg_.seed);
+}
+
+void Simulation::set_traffic_density(float density_multiplier) {
+    traffic_density_multiplier_ = std::clamp(density_multiplier, 0.1f, 5.0f);
+    const auto base_preset = get_scenario_preset(cfg_.scenario, cfg_.seed);
+    const float spawn_interval = std::max(0.1f, base_preset.spawn_interval_s / traffic_density_multiplier_);
+    const uint32_t max_veh = std::max(2u, static_cast<uint32_t>(std::round(static_cast<float>(base_preset.max_vehicles) * traffic_density_multiplier_)));
+    set_spawn_interval(spawn_interval);
+    set_max_vehicles(max_veh);
+}
+
+void Simulation::set_ai_model_enabled(bool enabled) {
+    cfg_.enable_rl_model = enabled;
+    if (!enabled) {
+        shared_rl_policy_.reset();
+    }
+    if (cfg_.signal_controller_type == SignalControllerType::ReinforcementLearning) {
+        init_default_signals();
+    }
 }
 
 void Simulation::set_run_id(std::string id) {
