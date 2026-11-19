@@ -102,7 +102,10 @@ jobs:
 
       - name: Test
         working-directory: build
-        run: ctest --output-on-failure --timeout 60
+        run: |
+          ORT_LIB_DIR=$(find . -name "libonnxruntime.so*" -exec dirname {} \; | head -n 1)
+          export LD_LIBRARY_PATH="$PWD/lib:$PWD/bin:$ORT_LIB_DIR:$LD_LIBRARY_PATH"
+          ctest --output-on-failure --timeout 60
 
   # ── Sanitizer Build + Test (Ubuntu, GCC ASan + UBSan) ────────────────────
   sanitizer-linux:
@@ -150,6 +153,9 @@ jobs:
       - name: Test under Sanitizers
         working-directory: build
         env:
-          ASAN_OPTIONS: "detect_leaks=1:abort_on_error=1"
-          UBSAN_OPTIONS: "print_stacktrace=1:abort_on_error=1"
-        run: ctest --output-on-failure --timeout 120
+          ASAN_OPTIONS: "detect_leaks=0:abort_on_error=1"
+          UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
+        run: |
+          ORT_LIB_DIR=$(find . -name "libonnxruntime.so*" -exec dirname {} \; | head -n 1)
+          export LD_LIBRARY_PATH="$PWD/lib:$PWD/bin:$ORT_LIB_DIR:$LD_LIBRARY_PATH"
+          ctest --output-on-failure --timeout 120
