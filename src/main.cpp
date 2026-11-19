@@ -233,7 +233,11 @@ int main(int argc, char* argv[]) {
                                                   &sim.signal_controllers(),
                                                   sim.signal_controller_type(),
                                                   sim.routing_strategy_type(),
-                                                  &sim.emergency_manager().status());
+                                                  &sim.emergency_manager().status(),
+                                                  sim.is_ai_model_enabled(),
+                                                  sim.traffic_density(),
+                                                  sim.traffic_aware_router().get(),
+                                                  &sim.road_queues());
 
         if (action.request_pause_toggle) {
             sim.set_paused(!sim.is_paused());
@@ -241,17 +245,26 @@ int main(int argc, char* argv[]) {
         if (action.request_reset) {
             sim.reset();
         }
+        if (action.request_step) {
+            sim.tick();
+        }
         if (action.request_speed_scale.has_value()) {
             sim.set_time_scale(*action.request_speed_scale);
         }
         if (action.request_scenario.has_value()) {
             sim.set_scenario(*action.request_scenario);
         }
+        if (action.request_traffic_density.has_value()) {
+            sim.set_traffic_density(*action.request_traffic_density);
+        }
         if (action.request_controller_type.has_value()) {
             sim.set_signal_controller_type(*action.request_controller_type);
         }
         if (action.request_routing_strategy.has_value()) {
             sim.set_routing_strategy_type(*action.request_routing_strategy);
+        }
+        if (action.request_ai_enabled.has_value()) {
+            sim.set_ai_model_enabled(*action.request_ai_enabled);
         }
         if (action.request_trigger_emergency) {
             sim.trigger_emergency_vehicle();
