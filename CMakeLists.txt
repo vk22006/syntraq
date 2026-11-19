@@ -150,14 +150,14 @@ if(NOT EXISTS "${ONNXRUNTIME_DIR}/include/onnxruntime_cxx_api.h")
     message(STATUS "ONNX Runtime SDK not found locally at ${ONNXRUNTIME_DIR}. Fetching prebuilt release binaries...")
     if(WIN32)
         if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
-            set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-arm64-1.20.1.zip")
+            set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.20.0/onnxruntime-win-arm64-1.20.0.zip")
         else()
-            set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip")
+            set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.20.0/onnxruntime-win-x64-1.20.0.zip")
         endif()
     elseif(APPLE)
-        set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-osx-arm64-1.20.1.tgz")
+        set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.20.0/onnxruntime-osx-arm64-1.20.0.tgz")
     else()
-        set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-x64-1.20.1.tgz")
+        set(ORT_URL "https://github.com/microsoft/onnxruntime/releases/download/v1.20.0/onnxruntime-linux-x64-1.20.0.tgz")
     endif()
 
     include(FetchContent)
@@ -179,21 +179,29 @@ if(NOT EXISTS "${ONNXRUNTIME_DIR}/include/onnxruntime_cxx_api.h")
 endif()
 
 if(WIN32)
+    set(ORT_DLL "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
+    if(NOT EXISTS "${ORT_DLL}" AND EXISTS "${ONNXRUNTIME_DIR}/bin/onnxruntime.dll")
+        set(ORT_DLL "${ONNXRUNTIME_DIR}/bin/onnxruntime.dll")
+    endif()
     add_library(onnxruntime SHARED IMPORTED GLOBAL)
     set_target_properties(onnxruntime PROPERTIES
         IMPORTED_IMPLIB   "${ONNXRUNTIME_DIR}/lib/onnxruntime.lib"
-        IMPORTED_LOCATION "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
+        IMPORTED_LOCATION "${ORT_DLL}"
         INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_DIR}/include"
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${ONNXRUNTIME_DIR}/include"
     )
-    if(EXISTS "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
-        file(COPY "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll" DESTINATION "${CMAKE_BINARY_DIR}/bin")
+    if(EXISTS "${ORT_DLL}")
+        file(COPY "${ORT_DLL}" DESTINATION "${CMAKE_BINARY_DIR}/bin")
     endif()
 else()
     file(GLOB ORT_SO_FILES "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so*")
+    find_file(ORT_SO_FILE NAMES libonnxruntime.so PATHS "${ONNXRUNTIME_DIR}/lib" NO_DEFAULT_PATH)
+    if(NOT ORT_SO_FILE AND ORT_SO_FILES)
+        list(GET ORT_SO_FILES 0 ORT_SO_FILE)
+    endif()
     add_library(onnxruntime SHARED IMPORTED GLOBAL)
     set_target_properties(onnxruntime PROPERTIES
-        IMPORTED_LOCATION "${ONNXRUNTIME_DIR}/lib/libonnxruntime.so"
+        IMPORTED_LOCATION "${ORT_SO_FILE}"
         INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_DIR}/include"
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${ONNXRUNTIME_DIR}/include"
     )
